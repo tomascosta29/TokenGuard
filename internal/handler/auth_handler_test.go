@@ -1,3 +1,4 @@
+// File: /home/fcosta/CostaAuth/./internal/handler/auth_handler_test.go
 package handler
 
 import (

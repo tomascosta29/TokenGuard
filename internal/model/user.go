@@ -1,3 +1,4 @@
+// File: /home/fcosta/CostaAuth/./internal/model/user.go
 package model
 
 import "github.com/google/uuid"

@@ -1,3 +1,4 @@
+// File: /home/fcosta/CostaAuth/./internal/repository/user_repository_sqlite_test.go
 package repository
 
 import (

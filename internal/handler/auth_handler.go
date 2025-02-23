@@ -1,8 +1,10 @@
+// File: /home/fcosta/CostaAuth/./internal/handler/auth_handler.go
 package handler
 
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -29,48 +31,60 @@ func (h *AuthHandler) RegisterRoutes(r *mux.Router) {
 }
 
 func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("RegisterHandler: Incoming request")
 	var req model.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("RegisterHandler: Invalid request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	_, err := h.userService.RegisterUser(r.Context(), &req)
 	if err != nil {
+		log.Printf("RegisterHandler: Registration failed: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest) // Or a different status code
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated) // 201 Created
-	fmt.Fprintln(w, "User registered successfully")
+	w.WriteHeader(http.StatusCreated)                                                       // 201 Created
+	w.Header().Set("Content-Type", "application/json")                                      // Set Content-Type
+	json.NewEncoder(w).Encode(map[string]string{"message": "User registered successfully"}) // JSON response
+	log.Println("RegisterHandler: User registered successfully")
 }
 
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("LoginHandler: Incoming request")
 	var req model.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("LoginHandler: Invalid request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	user, err := h.userService.LoginUser(r.Context(), &req)
 	if err != nil {
+		log.Printf("LoginHandler: Login failed: %v", err)
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	token, err := h.tokenService.GenerateToken(r.Context(), user.ID)
 	if err != nil {
+		log.Printf("LoginHandler: Failed to generate token: %v", err)
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	log.Println("LoginHandler: Login successful, token generated")
 }
 
 func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("RefreshHandler: Incoming request")
 	var req model.RefreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("RefreshHandler: Invalid request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -85,18 +99,22 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := uuid.NewUUID() // Normally, extract user ID from refresh token
 	accessToken, err := h.tokenService.GenerateToken(r.Context(), userID)
 	if err != nil {
+		log.Printf("RefreshHandler: Failed to generate access token: %v", err)
 		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"access_token": accessToken})
+	log.Println("RefreshHandler: Access token generated successfully")
 }
 
 func (h *AuthHandler) ValidateTokenHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("ValidateTokenHandler: Incoming request")
 	authHeader := r.Header.Get("Authorization")
 
 	if authHeader == "" {
+		log.Println("ValidateTokenHandler: Authorization header required")
 		http.Error(w, "Authorization header required", http.StatusUnauthorized)
 		return
 	}
@@ -105,24 +123,33 @@ func (h *AuthHandler) ValidateTokenHandler(w http.ResponseWriter, r *http.Reques
 
 	claims, err := h.tokenService.ValidateToken(r.Context(), tokenString)
 	if err != nil {
+		log.Printf("ValidateTokenHandler: Invalid token: %v", err)
 		http.Error(w, fmt.Sprintf("Invalid token: %v", err), http.StatusUnauthorized)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(claims)
+	log.Println("ValidateTokenHandler: Token validated successfully")
 }
 
 func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("LogoutHandler: Incoming request")
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
+		log.Println("LogoutHandler: Authorization header required")
 		http.Error(w, "Authorization header required", http.StatusUnauthorized)
 		return
 	}
 	tokenString := authHeader[len("Bearer "):]
 	err := h.tokenService.RevokeToken(r.Context(), tokenString)
 	if err != nil {
+		log.Printf("LogoutHandler: Could not log out: %v", err)
 		http.Error(w, fmt.Sprintf("could not log out: %v", err), http.StatusUnauthorized)
+		return
 	}
 	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")                                      // Set Content-Type
+	json.NewEncoder(w).Encode(map[string]string{"message": "User logged out successfully"}) // JSON response
 	fmt.Fprintln(w, "Logged out successfully")
+	log.Println("LogoutHandler: Logged out successfully")
 }

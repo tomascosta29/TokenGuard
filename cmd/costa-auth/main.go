@@ -1,3 +1,4 @@
+// File: /home/fcosta/CostaAuth/./cmd/costa-auth/main.go
 package main
 
 import (
@@ -19,17 +20,21 @@ import (
 )
 
 func main() {
+	log.Println("Starting CostaAuth service...")
+
 	// Load configuration
 	cfg, err := config.LoadConfig(".env")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+	log.Printf("Config loaded successfully. Port: %s, TokenStore: %s, MTLS: %t", cfg.Port, cfg.TokenStore, cfg.MTLSEnabled)
 
 	// Initialize database connections
 	userRepo, err := repository.NewSQLiteUserRepository("auth.db") // Use SQLite
 	if err != nil {
 		log.Fatal("failed to connect to SQLite", err)
 	}
+	log.Println("SQLite user repository initialized.")
 
 	// Choose TokenRepository implementation based on environment variable
 	var tokenRepo repository.TokenRepository
@@ -38,8 +43,10 @@ func main() {
 		if err != nil {
 			log.Fatal("Failed to create Redis client:", err)
 		}
+		log.Println("Redis token repository initialized.")
 	} else if cfg.TokenStore == "inmemory" {
 		tokenRepo = repository.NewInMemoryTokenRepository()
+		log.Println("In-memory token repository initialized.")
 	} else {
 		log.Fatalf("Invalid TOKEN_STORE environment variable: %s. Must be 'redis' or 'inmemory'.", cfg.TokenStore)
 	}
@@ -48,11 +55,15 @@ func main() {
 	passwordChecker := service.NewBcryptPasswordChecker()
 
 	// Initialize services
-	userService := service.NewUserService(userRepo, passwordChecker)          // Inject passwordChecker
+	userService := service.NewUserService(userRepo, passwordChecker) // Inject passwordChecker
+	log.Println("User service initialized.")
+
 	tokenService := service.NewTokenService(tokenRepo, []byte(cfg.JWTSecret)) // Use selected tokenRepo
+	log.Println("Token service initialized.")
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(userService, tokenService)
+	log.Println("Auth handler initialized.")
 
 	// Create router and register routes
 	r := mux.NewRouter()
@@ -73,6 +84,7 @@ func main() {
 			log.Fatal("Failed to setup TLS config:", err)
 		}
 		server.TLSConfig = tlsConfig
+		log.Println("mTLS enabled and TLS config setup.")
 	}
 
 	// Graceful shutdown setup
@@ -100,9 +112,13 @@ func main() {
 		// Start with TLS
 		// Use ListenAndServeTLS with empty strings for cert and key,
 		// because they are already loaded in server.TLSConfig
+		// Use ListenAndServeTLS with empty strings for cert and key,
+		// because they are already loaded in server.TLSConfig
+		log.Printf("Starting server with TLS on port %s", cfg.Port)
 		err = server.ListenAndServeTLS("", "") // Use ListenAndServeTLS
 	} else {
 		// Start without TLS
+		log.Printf("Starting server without TLS on port %s", cfg.Port)
 		err = server.ListenAndServe()
 	}
 
