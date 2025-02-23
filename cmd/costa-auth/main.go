@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/tomascosta29/CostaAuth/internal/app"
 	"github.com/tomascosta29/CostaAuth/internal/config"
 	"github.com/tomascosta29/CostaAuth/internal/handler"
 	"github.com/tomascosta29/CostaAuth/internal/repository"
@@ -24,8 +25,8 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Initialize user repository (assuming SQLite for users)
-	userRepo, err := repository.NewSQLiteUserRepository("auth.db")
+	// Initialize database connections
+	userRepo, err := repository.NewSQLiteUserRepository("auth.db") // Use SQLite
 	if err != nil {
 		log.Fatal("failed to connect to SQLite", err)
 	}
@@ -61,8 +62,17 @@ func main() {
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      r,
-		ReadTimeout:  10 * time.Second, // Set timeouts to prevent Slowloris attacks
+		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
+	}
+
+	// --- mTLS Setup (Conditional) ---
+	if cfg.MTLSEnabled {
+		tlsConfig, err := app.SetupTLSConfig(cfg)
+		if err != nil {
+			log.Fatal("Failed to setup TLS config:", err)
+		}
+		server.TLSConfig = tlsConfig
 	}
 
 	// Graceful shutdown setup
@@ -84,10 +94,19 @@ func main() {
 		close(idleConnsClosed)
 	}()
 
-	// Start the server
-	fmt.Printf("Starting server on port %s\n", cfg.Port)
-	if err := server.ListenAndServe(); err != http.ErrServerClosed {
-		// Error starting or closing listener:
+	// Start the server (with or without TLS)
+	fmt.Printf("Starting server on port %s (mTLS: %t)\n", cfg.Port, cfg.MTLSEnabled)
+	if cfg.MTLSEnabled {
+		// Start with TLS
+		// Use ListenAndServeTLS with empty strings for cert and key,
+		// because they are already loaded in server.TLSConfig
+		err = server.ListenAndServeTLS("", "") // Use ListenAndServeTLS
+	} else {
+		// Start without TLS
+		err = server.ListenAndServe()
+	}
+
+	if err != http.ErrServerClosed {
 		log.Fatalf("HTTP server ListenAndServe: %v", err)
 	}
 

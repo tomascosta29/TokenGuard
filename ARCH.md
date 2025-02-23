@@ -117,3 +117,48 @@ This proposed architecture for your authentication microservice covers:
 - **Extensibility** through API versioning, modular design, and potential client libraries.
 
 This setup provides a robust, scalable, and secure foundation for your DocuSign-like project while allowing you to extend or modify components as your requirements evolve.
+
+
+CostaAuth/
+├── cmd/
+│   └── authservice/
+│       └── main.go          # Main entry point for the auth service.
+│                           # Initializes config, database connections, services,
+│                           # handlers, and starts the HTTP(S) server.
+│                           # Handles graceful shutdown.  Chooses TokenRepository
+│                           # based on environment variables.  Sets up mTLS if enabled.
+├── internal/
+│   ├── app/
+│   │   ├── auth.go         # (Currently empty, placeholder for future app logic)
+│   │   └── errors.go       # (Placeholder for custom error types)
+│   │   └── tls.go          # Contains SetupTLSConfig function to configure mTLS.
+│   ├── config/
+│   │   └── config.go       # Loads configuration from environment variables (using .env file).
+│   │                       # Defines the Config struct with all configuration options.
+│   ├── handler/
+│   │   ├── auth_handler.go # Defines HTTP handlers for authentication endpoints
+│   │   │                   # (register, login, validate, logout, refresh, admin/revoke).
+│   │   │                   # Uses UserService and TokenService.
+│   │   └── middleware.go   # Contains middleware functions: AuthMiddleware (JWT validation)
+│   │                       # and mTLSAuthMiddleware (client certificate validation).
+│   ├── model/
+│   │   ├── user.go         # Defines the User struct (database model).
+│   │   ├── token.go        # Defines the Token struct.
+│   │   └── request.go      # Defines structs for request payloads (LoginRequest, RegisterRequest, RefreshRequest).
+│   ├── repository/
+│   │   ├── token_repository.go        # Defines the TokenRepository interface (RevokeToken, IsTokenRevoked).
+│   │   ├── token_repository_redis.go   # Implements TokenRepository using Redis (for token blacklisting).
+│   │   ├── token_repository_inmemory.go # Implements TokenRepository using an in-memory map (for testing/dev).
+│   │   ├── user_repository.go         # Defines the UserRepository interface (CreateUser, GetUserBy*, etc.).
+│   │   └── user_repository_sqlite.go  # Implements UserRepository using SQLite.
+│   └── service/
+│       ├── token_service.go   # Implements token generation, validation, and revocation logic.
+│       │                      # Uses TokenRepository.  Uses JWTs.
+│       ├── user_service.go    # Implements user registration and login logic.
+│       │                      # Uses UserRepository, PasswordChecker.  Handles password hashing.
+│       └── password_checker.go # Defines PasswordChecker interface and bcryptPasswordChecker implementation.
+├── pkg/                # (Currently empty - for future reusable packages)
+├── .env                # Environment variables (NOT committed to version control).
+├── go.mod              # Go module definition.
+├── go.sum              # Go module checksums.
+└── README.md           # Project description.
