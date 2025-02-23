@@ -86,7 +86,7 @@ func TestAuthHandler_RegisterHandler(t *testing.T) {
 	handler.RegisterHandler(recorder, req)
 
 	assert.Equal(t, http.StatusCreated, recorder.Code)
-	assert.Equal(t, "User registered successfully\n", recorder.Body.String())
+	assert.Equal(t, "{\"message\":\"User registered successfully\"}\n", recorder.Body.String())
 
 	// Reset the mock for the next test case!  This is important.
 	mockUserService = new(MockUserService)
