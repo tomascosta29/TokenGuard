@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
+	"regexp"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -14,8 +16,8 @@ import (
 )
 
 type AuthHandler struct {
-	userService  service.UserServiceInterface  // Use the interface
-	tokenService service.TokenServiceInterface // Use the interface
+	userService  service.UserServiceInterface
+	tokenService service.TokenServiceInterface
 }
 
 func NewAuthHandler(userService service.UserServiceInterface, tokenService service.TokenServiceInterface) *AuthHandler {
@@ -39,6 +41,33 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Input Validation
+	if req.Username == "" || req.Email == "" || req.Password == "" {
+		http.Error(w, "All fields are required", http.StatusBadRequest)
+		return
+	}
+
+	// Username validation
+	usernameRegex := regexp.MustCompile(`^[a-zA-Z0-9]{3,20}$`)
+	if !usernameRegex.MatchString(req.Username) {
+		http.Error(w, "Invalid username format", http.StatusBadRequest)
+		return
+	}
+
+	// Email validation (basic check)
+	// not sure if it checks syntax only, or also if domain exist etc but i guess it's fine either way. Topic will be rivisited during securty audit
+	if _, err := mail.ParseAddress(req.Email); err != nil {
+		http.Error(w, "Invalid email format", http.StatusBadRequest)
+		return
+	}
+
+	// Password validation (here: minimum length 8)
+	// Should contain more complexity checks and i'll probably add it once i audit the microservice from security perspective. For now it's fine.
+	if len(req.Password) < 8 {
+		http.Error(w, "Password must be at least 8 characters long", http.StatusBadRequest)
+		return
+	}
+
 	_, err := h.userService.RegisterUser(r.Context(), &req)
 	if err != nil {
 		log.Printf("RegisterHandler: Registration failed: %v", err)
@@ -58,6 +87,18 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("LoginHandler: Invalid request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		http.Error(w, "Username and password are required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate username format, same as in registration
+	usernameRegex := regexp.MustCompile(`^[a-zA-Z0-9]{3,20}$`)
+	if !usernameRegex.MatchString(req.Username) {
+		http.Error(w, "Invalid username format", http.StatusBadRequest)
 		return
 	}
 
