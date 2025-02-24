@@ -1,4 +1,3 @@
-// File: /home/fcosta/CostaAuth/./internal/handler/auth_handler.go
 package handler
 
 import (
@@ -13,6 +12,8 @@ import (
 	"github.com/tomascosta29/CostaAuth/internal/model"
 	"github.com/tomascosta29/CostaAuth/internal/service"
 )
+
+// ... (Other AuthHandler code remains the same) ...
 
 type AuthHandler struct {
 	userService  service.UserServiceInterface
@@ -60,10 +61,9 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Password validation (here: minimum length 8)
-	// Should contain more complexity checks and i'll probably add it once i audit the microservice from security perspective. For now it's fine.
-	if len(req.Password) < 8 {
-		http.Error(w, "Password must be at least 8 characters long", http.StatusBadRequest)
+	// Password validation (complexity check)
+	if err := validatePasswordComplexity(req.Password); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -142,7 +142,10 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	userID, err := h.tokenService.ValidateRefreshToken(r.Context(), refreshToken)
 	if err != nil {
 		log.Printf("RefreshHandler: Invalid refresh token: %v", err)
-		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
+		// Use a structured error response for consistency
+		w.Header().Set("Content-Type", "application/json") // Set Content-Type *before* writing the status
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid refresh token"})
 		return
 	}
 
@@ -218,4 +221,56 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "User logged out successfully"}) // JSON response
 	fmt.Fprintln(w, "Logged out successfully")
 	log.Println("LogoutHandler: Logged out successfully")
+}
+
+// validatePasswordComplexity checks if a password meets complexity requirements.
+func validatePasswordComplexity(password string) error {
+	minLength := 8
+	hasUpper := false
+	hasLower := false
+	hasNumber := false
+	hasSpecial := false
+
+	if len(password) < minLength {
+		return fmt.Errorf("password must be at least %d characters long", minLength)
+	}
+
+	for _, char := range password {
+		switch {
+		case 'A' <= char && char <= 'Z':
+			hasUpper = true
+		case 'a' <= char && char <= 'z':
+			hasLower = true
+		case '0' <= char && char <= '9':
+			hasNumber = true
+		case isSpecialCharacter(char):
+			hasSpecial = true
+		}
+	}
+
+	if !hasUpper {
+		return fmt.Errorf("password must contain at least one uppercase letter")
+	}
+	if !hasLower {
+		return fmt.Errorf("password must contain at least one lowercase letter")
+	}
+	if !hasNumber {
+		return fmt.Errorf("password must contain at least one number")
+	}
+	if !hasSpecial {
+		return fmt.Errorf("password must contain at least one special character")
+	}
+
+	return nil
+}
+
+// isSpecialCharacter checks if a character is a special character
+func isSpecialCharacter(char rune) bool {
+	specialChars := "!\"#$%&'()*+,-./:;<=>?@[]^_{|}~"
+	for _, specialChar := range specialChars {
+		if char == specialChar {
+			return true
+		}
+	}
+	return false
 }
