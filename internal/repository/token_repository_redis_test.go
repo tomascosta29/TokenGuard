@@ -44,6 +44,21 @@ func (m *MockRedisClient) Ping(ctx context.Context) *redis.StatusCmd {
 	return redis.NewStatusResult("PONG", nil) // No error in mock
 }
 
+// Mock for Del
+func (m *MockRedisClient) Del(ctx context.Context, keys ...string) *redis.IntCmd {
+	if m.data == nil {
+		return redis.NewIntResult(0, nil) // No keys deleted
+	}
+	deleted := 0
+	for _, key := range keys {
+		if _, ok := m.data[key]; ok {
+			delete(m.data, key)
+			deleted++
+		}
+	}
+	return redis.NewIntResult(int64(deleted), nil) // Return number of deleted keys
+}
+
 func TestRedisTokenRepository_RevokeToken(t *testing.T) {
 	mockClient := &MockRedisClient{}
 	repo := &RedisTokenRepository{client: mockClient} // Use the mock
@@ -89,7 +104,7 @@ func TestRedisTokenRepository_IsTokenRevoked(t *testing.T) {
 	assert.True(t, isRevoked)
 }
 
-//For real integration test, you can use this (commented out) and replace MockRedisClient with a real client.
+//For real integration test
 /*
 func TestRedisTokenRepository_Integration(t *testing.T) {
 	if testing.Short() {

@@ -9,7 +9,6 @@ import (
 	"net/mail"
 	"regexp"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/tomascosta29/CostaAuth/internal/model"
 	"github.com/tomascosta29/CostaAuth/internal/service"
@@ -116,8 +115,15 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	refreshToken, err := h.tokenService.GenerateRefreshToken(r.Context(), user.ID)
+	if err != nil {
+		log.Printf("LoginHandler: Failed to generate refresh token: %v", err)
+		http.Error(w, "Failed to generate refresh token", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	json.NewEncoder(w).Encode(map[string]string{"token": token, "refresh_token": refreshToken})
 	log.Println("LoginHandler: Login successful, token generated")
 }
 
@@ -130,14 +136,25 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// in a real-world scenario you would retrieve the refresh token claims
-	// here for simplicity's sake, and since its a mock, its not really implemented
-	// so we just return a new token.
-	// Refresh Token logic would include validating the Refresh token,
-	// checking if its blacklisted, and issueing a new access token
-	// (and potentially, a new refresh token)
+	refreshToken := req.RefreshToken
 
-	userID, _ := uuid.NewUUID() // Normally, extract user ID from refresh token
+	// Validate the refresh token
+	userID, err := h.tokenService.ValidateRefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		log.Printf("RefreshHandler: Invalid refresh token: %v", err)
+		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	// Revoke the used refresh token
+	err = h.tokenService.RevokeRefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		log.Printf("RefreshHandler: Failed to revoke refresh token: %v", err)
+		http.Error(w, "Failed to revoke refresh token", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate a new access token
 	accessToken, err := h.tokenService.GenerateToken(r.Context(), userID)
 	if err != nil {
 		log.Printf("RefreshHandler: Failed to generate access token: %v", err)
@@ -145,8 +162,16 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate a new refresh token (for refresh token rotation)
+	newRefreshToken, err := h.tokenService.GenerateRefreshToken(r.Context(), userID)
+	if err != nil {
+		log.Printf("RefreshHandler: Failed to generate new refresh token: %v", err)
+		http.Error(w, "Failed to generate new refresh token", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"access_token": accessToken})
+	json.NewEncoder(w).Encode(map[string]string{"access_token": accessToken, "refresh_token": newRefreshToken})
 	log.Println("RefreshHandler: Access token generated successfully")
 }
 

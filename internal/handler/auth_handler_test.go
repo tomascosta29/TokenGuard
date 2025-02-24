@@ -71,6 +71,22 @@ func (m *MockTokenService) RevokeToken(ctx context.Context, tokenString string) 
 	return args.Error(0)
 }
 
+// Mock TokenService functions for refresh token
+func (m *MockTokenService) GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error) {
+	args := m.Called(ctx, userID)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockTokenService) ValidateRefreshToken(ctx context.Context, refreshToken string) (uuid.UUID, error) {
+	args := m.Called(ctx, refreshToken)
+	return args.Get(0).(uuid.UUID), args.Error(1)
+}
+
+func (m *MockTokenService) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
+	args := m.Called(ctx, refreshToken)
+	return args.Error(0)
+}
+
 func TestAuthHandler_RegisterHandler(t *testing.T) {
 	mockUserService := new(MockUserService)
 	mockTokenService := new(MockTokenService)
@@ -129,8 +145,10 @@ func TestAuthHandler_LoginHandler(t *testing.T) {
 	reqBody := `{"username": "testuser", "password": "password123"}`
 	req, _ := http.NewRequest("POST", "/auth/login", bytes.NewBufferString(reqBody))
 	recorder := httptest.NewRecorder()
-	mockUserService.On("LoginUser", mock.Anything, mock.AnythingOfType("*model.LoginRequest")).Return(&model.User{ID: uuid.New()}, nil)
+	userID := uuid.New()
+	mockUserService.On("LoginUser", mock.Anything, mock.AnythingOfType("*model.LoginRequest")).Return(&model.User{ID: userID}, nil)
 	mockTokenService.On("GenerateToken", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return("testtoken", nil)
+	mockTokenService.On("GenerateRefreshToken", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return("testrefreshtoken", nil)
 
 	handler.LoginHandler(recorder, req)
 
@@ -138,6 +156,7 @@ func TestAuthHandler_LoginHandler(t *testing.T) {
 	var response map[string]string
 	json.Unmarshal(recorder.Body.Bytes(), &response)
 	assert.Equal(t, "testtoken", response["token"])
+	assert.Equal(t, "testrefreshtoken", response["refresh_token"])
 
 	// Reset mocks
 	mockUserService = new(MockUserService)
@@ -240,6 +259,65 @@ func TestAuthHandler_LogoutHandler(t *testing.T) {
 	mockTokenService.On("RevokeToken", mock.Anything, "invalid-token").Return(assert.AnError)
 	handler.LogoutHandler(recorder, req)
 	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	mockTokenService.AssertExpectations(t)
+	mockUserService.AssertExpectations(t)
+}
+
+func TestAuthHandler_RefreshHandler(t *testing.T) {
+	mockUserService := new(MockUserService)
+	mockTokenService := new(MockTokenService)
+	handler := NewAuthHandler(mockUserService, mockTokenService)
+
+	// Test case: Successful refresh
+	refreshToken := "valid-refresh-token"
+	userID := uuid.New()
+	newAccessToken := "new-access-token"
+	newRefreshToken := "new-refresh-token"
+
+	reqBody := `{"refresh_token": "` + refreshToken + `"}`
+	req, _ := http.NewRequest("POST", "/auth/refresh", bytes.NewBufferString(reqBody))
+	recorder := httptest.NewRecorder()
+
+	mockTokenService.On("ValidateRefreshToken", mock.Anything, refreshToken).Return(userID, nil)
+	mockTokenService.On("RevokeRefreshToken", mock.Anything, refreshToken).Return(nil)
+	mockTokenService.On("GenerateToken", mock.Anything, userID).Return(newAccessToken, nil)
+	mockTokenService.On("GenerateRefreshToken", mock.Anything, userID).Return(newRefreshToken, nil)
+
+	handler.RefreshHandler(recorder, req)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var response map[string]string
+	json.Unmarshal(recorder.Body.Bytes(), &response)
+	assert.Equal(t, newAccessToken, response["access_token"])
+	assert.Equal(t, newRefreshToken, response["refresh_token"])
+
+	// Reset mocks
+	mockUserService = new(MockUserService)
+	mockTokenService = new(MockTokenService)
+	handler = NewAuthHandler(mockUserService, mockTokenService)
+
+	// Test case: Invalid request body
+	req, _ = http.NewRequest("POST", "/auth/refresh", bytes.NewBufferString("invalid json"))
+	recorder = httptest.NewRecorder()
+
+	handler.RefreshHandler(recorder, req)
+	assert.Equal(t, http.StatusBadRequest, recorder.Code)
+
+	// Reset mocks
+	mockUserService = new(MockUserService)
+	mockTokenService = new(MockTokenService)
+	handler = NewAuthHandler(mockUserService, mockTokenService)
+
+	// Test case: Invalid refresh token
+	reqBody = `{"refresh_token": "invalid-token"}`
+	req, _ = http.NewRequest("POST", "/auth/refresh", bytes.NewBufferString(reqBody))
+	recorder = httptest.NewRecorder()
+
+	mockTokenService.On("ValidateRefreshToken", mock.Anything, "invalid-token").Return(uuid.Nil, errors.New("invalid refresh token"))
+
+	handler.RefreshHandler(recorder, req)
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+
 	mockTokenService.AssertExpectations(t)
 	mockUserService.AssertExpectations(t)
 }

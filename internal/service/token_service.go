@@ -17,16 +17,24 @@ type TokenServiceInterface interface {
 	GenerateToken(ctx context.Context, userID uuid.UUID) (string, error)
 	ValidateToken(ctx context.Context, tokenString string) (jwt.MapClaims, error)
 	RevokeToken(ctx context.Context, tokenString string) error
+	GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error)       // New Function
+	ValidateRefreshToken(ctx context.Context, refreshToken string) (uuid.UUID, error) // New Function
+	RevokeRefreshToken(ctx context.Context, refreshToken string) error                // New Function
 }
 
 type TokenService struct {
-	tokenRepo repository.TokenRepository
-	jwtSecret []byte
+	tokenRepo              repository.TokenRepository
+	jwtSecret              []byte
+	refreshTokenExpiration time.Duration // Define refresh token expiration
 }
 
 func NewTokenService(tokenRepo repository.TokenRepository, jwtSecret []byte) *TokenService {
 	log.Println("NewTokenService: Creating new token service")
-	return &TokenService{tokenRepo: tokenRepo, jwtSecret: jwtSecret}
+	return &TokenService{
+		tokenRepo:              tokenRepo,
+		jwtSecret:              jwtSecret,
+		refreshTokenExpiration: time.Hour * 24 * 7, // 7 days expiration for refresh tokens
+	}
 }
 
 // GenerateToken generates a new JWT
@@ -115,5 +123,39 @@ func (s *TokenService) RevokeToken(ctx context.Context, tokenString string) erro
 	}
 
 	log.Println("RevokeToken: Token revoked successfully")
+	return nil
+}
+
+// GenerateRefreshToken generates a new refresh token
+func (s *TokenService) GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error) {
+	refreshToken := uuid.New().String()
+	err := s.tokenRepo.CreateRefreshToken(ctx, userID, refreshToken, s.refreshTokenExpiration)
+	if err != nil {
+		log.Printf("GenerateRefreshToken: Failed to store refresh token: %v", err)
+		return "", err
+	}
+	log.Printf("GenerateRefreshToken: Refresh token generated successfully for user ID %s", userID)
+	return refreshToken, nil
+}
+
+// ValidateRefreshToken validates a refresh token
+func (s *TokenService) ValidateRefreshToken(ctx context.Context, refreshToken string) (uuid.UUID, error) {
+	userID, err := s.tokenRepo.GetRefreshToken(ctx, refreshToken)
+	if err != nil {
+		log.Printf("ValidateRefreshToken: Refresh token validation failed: %v", err)
+		return uuid.Nil, err
+	}
+	log.Println("ValidateRefreshToken: Refresh token is valid")
+	return userID, nil
+}
+
+// RevokeRefreshToken revokes a refresh token
+func (s *TokenService) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
+	err := s.tokenRepo.RevokeRefreshToken(ctx, refreshToken)
+	if err != nil {
+		log.Printf("RevokeRefreshToken: Failed to revoke refresh token: %v", err)
+		return err
+	}
+	log.Println("RevokeRefreshToken: Refresh token revoked successfully")
 	return nil
 }

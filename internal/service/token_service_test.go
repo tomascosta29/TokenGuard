@@ -31,6 +31,24 @@ func (m *MockTokenRepository) IsTokenRevoked(ctx context.Context, jti string) (b
 	return args.Bool(0), args.Error(1) // Return configured values (bool and error)
 }
 
+// Mock for CreateRefreshToken
+func (m *MockTokenRepository) CreateRefreshToken(ctx context.Context, userID uuid.UUID, token string, expiration time.Duration) error {
+	args := m.Called(ctx, userID, token, expiration)
+	return args.Error(0)
+}
+
+// Mock for GetRefreshToken
+func (m *MockTokenRepository) GetRefreshToken(ctx context.Context, token string) (uuid.UUID, error) {
+	args := m.Called(ctx, token)
+	return args.Get(0).(uuid.UUID), args.Error(1)
+}
+
+// Mock for RevokeRefreshToken
+func (m *MockTokenRepository) RevokeRefreshToken(ctx context.Context, token string) error {
+	args := m.Called(ctx, token)
+	return args.Error(0)
+}
+
 // --- Test Cases ---
 
 func TestTokenService_GenerateToken(t *testing.T) {
