@@ -40,12 +40,12 @@ func main() {
 	var tokenRepo repository.TokenRepository
 	if cfg.TokenStore == "redis" {
 		tokenRepo, err = repository.NewRedisTokenRepository(cfg.RedisAddress, cfg.RedisPassword)
-		if err != nil {
-			log.Fatal("Failed to create Redis client:", err)
-		}
-		log.Println("Redis token repository initialized.")
 	} else if cfg.TokenStore == "inmemory" {
 		tokenRepo = repository.NewInMemoryTokenRepository()
+	}
+	if err != nil {
+		log.Fatal("Failed to create token repository:", err)
+	} else if cfg.TokenStore == "inmemory" {
 		log.Println("In-memory token repository initialized.")
 	} else {
 		log.Fatalf("Invalid TOKEN_STORE environment variable: %s. Must be 'redis' or 'inmemory'.", cfg.TokenStore)
