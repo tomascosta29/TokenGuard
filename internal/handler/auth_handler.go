@@ -13,8 +13,6 @@ import (
 	"github.com/tomascosta29/CostaAuth/internal/service"
 )
 
-// ... (Other AuthHandler code remains the same) ...
-
 type AuthHandler struct {
 	userService  service.UserServiceInterface
 	tokenService service.TokenServiceInterface

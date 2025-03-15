@@ -43,7 +43,7 @@ func SetupTLSConfig(cfg *config.Config) (*tls.Config, error) {
 		Certificates: []tls.Certificate{cert},        // Server's certificate
 		ClientAuth:   tls.RequireAndVerifyClientCert, // Require and verify client certs
 		ClientCAs:    caCertPool,                     // CA pool for client verification
-		MinVersion:   tls.VersionTLS12,               // Good practice: Enforce TLS 1.2 or higher
+		MinVersion:   tls.VersionTLS12,               // Enforce TLS 1.2 or higher
 	}
 
 	log.Println("TLS config created successfully.")
