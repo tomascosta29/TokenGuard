@@ -94,3 +94,18 @@ To run the unit tests, execute the following command from the project root direc
 
 ```bash
 go test ./... CostaAuth
+
+**Future Work:** (in no specific order)
+
+*   Expanded Database Support (PostgreSQL, MySQL etc.)
+*   Email Verification
+*   Password Reset Functionality
+*   Rate Limiting
+*   Metrics and Monitoring (Prometheus, Grafana)
+*   Audit Logging
+*   OAuth 2.0 Support
+*   Social Login
+*   Multi-Factor Authentication (MFA)
+*   Detailed Error Responses
+*   API Versioning
+*   Improved Input Validation
