@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/repository/user_repository_sqlite_test.go
+// File: TokenGuard/./internal/repository/user_repository_sqlite_test.go
 package repository
 
 import (
@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tomascosta29/CostaAuth/internal/model"
+	"github.com/tomascosta29/TokenGuard/internal/model"
 
 	_ "github.com/mattn/go-sqlite3"
 )

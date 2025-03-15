@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/config/config.go
+// File: TokenGuard/./internal/config/config.go
 package config
 
 import (

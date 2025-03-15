@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/security/password.go
+// File: TokenGuard/./internal/security/password.go
 package security
 
 import "golang.org/x/crypto/bcrypt"

@@ -119,7 +119,7 @@ This proposed architecture for your authentication microservice covers:
 This setup provides a robust, scalable, and secure foundation for your DocuSign-like project while allowing you to extend or modify components as your requirements evolve.
 
 
-CostaAuth/
+TokenGuard/
 ├── cmd/
 │   └── authservice/
 │       └── main.go          # Main entry point for the auth service.

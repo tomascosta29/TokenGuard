@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./cmd/costa-auth/main.go
+// File: /cmd/token-guard/main.go
 package main
 
 import (
@@ -12,15 +12,15 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/tomascosta29/CostaAuth/internal/app"
-	"github.com/tomascosta29/CostaAuth/internal/config"
-	"github.com/tomascosta29/CostaAuth/internal/handler"
-	"github.com/tomascosta29/CostaAuth/internal/repository"
-	"github.com/tomascosta29/CostaAuth/internal/service"
+	"github.com/tomascosta29/TokenGuard/internal/app"
+	"github.com/tomascosta29/TokenGuard/internal/config"
+	"github.com/tomascosta29/TokenGuard/internal/handler"
+	"github.com/tomascosta29/TokenGuard/internal/repository"
+	"github.com/tomascosta29/TokenGuard/internal/service"
 )
 
 func main() {
-	log.Println("Starting CostaAuth service...")
+	log.Println("Starting TokenGuard service...")
 
 	// Load configuration
 	cfg, err := config.LoadConfig(".env")

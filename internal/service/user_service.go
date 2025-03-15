@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/service/user_service.go
+// File: TokenGuard/./internal/service/user_service.go
 package service
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/tomascosta29/CostaAuth/internal/model"
-	"github.com/tomascosta29/CostaAuth/internal/repository"
+	"github.com/tomascosta29/TokenGuard/internal/model"
+	"github.com/tomascosta29/TokenGuard/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 )
 

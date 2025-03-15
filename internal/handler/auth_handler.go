@@ -9,8 +9,8 @@ import (
 	"regexp"
 
 	"github.com/gorilla/mux"
-	"github.com/tomascosta29/CostaAuth/internal/model"
-	"github.com/tomascosta29/CostaAuth/internal/service"
+	"github.com/tomascosta29/TokenGuard/internal/model"
+	"github.com/tomascosta29/TokenGuard/internal/service"
 )
 
 type AuthHandler struct {

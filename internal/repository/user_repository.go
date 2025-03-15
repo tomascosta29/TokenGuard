@@ -1,11 +1,11 @@
-// File: /home/fcosta/CostaAuth/./internal/repository/user_repository.go
+// File: TokenGuard/./internal/repository/user_repository.go
 package repository
 
 import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/tomascosta29/CostaAuth/internal/model"
+	"github.com/tomascosta29/TokenGuard/internal/model"
 )
 
 type UserRepository interface {

@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/service/user_service_test.go
+// File: TokenGuard/./internal/service/user_service_test.go
 package service
 
 import (
@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/tomascosta29/CostaAuth/internal/model"
+	"github.com/tomascosta29/TokenGuard/internal/model"
 )
 
 // Mock UserRepository for testing the service

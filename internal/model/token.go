@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/model/token.go
+// File: TokenGuard/./internal/model/token.go
 package model
 
 type Token struct {

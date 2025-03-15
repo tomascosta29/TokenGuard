@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/app/tls.go
+// File: TokenGuard/./internal/app/tls.go
 package app
 
 import (
@@ -8,7 +8,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/tomascosta29/CostaAuth/internal/config"
+	"github.com/tomascosta29/TokenGuard/internal/config"
 )
 
 // SetupTLSConfig creates a *tls.Config for mTLS.

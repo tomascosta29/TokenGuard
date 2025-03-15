@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/handler/auth_handler_test.go
+// File: TokenGuard/./internal/handler/auth_handler_test.go
 package handler
 
 import (
@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/tomascosta29/CostaAuth/internal/model"
+	"github.com/tomascosta29/TokenGuard/internal/model"
 )
 
 type MockUserService struct {

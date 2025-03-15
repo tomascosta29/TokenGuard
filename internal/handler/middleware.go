@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/handler/middleware.go
+// File: TokenGuard/./internal/handler/middleware.go
 package handler
 
 import (
@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/tomascosta29/CostaAuth/internal/service"
+	"github.com/tomascosta29/TokenGuard/internal/service"
 )
 
 // AuthMiddleware is a middleware function that checks for a valid JWT

@@ -1,10 +1,10 @@
-## CostaAuth - Authentication Microservice
+## TokenGuard - Authentication Microservice
 
 [![Go](https://img.shields.io/badge/Go-1.20+-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://github.com/tomascosta29/CostaAuth/actions/workflows/go.yml/badge.svg)](https://github.com/tomascosta29/CostaAuth/actions/workflows/go.yml) <!-- Replace with your actual GitHub Actions badge link -->
+[![Tests](https://github.com/tomascosta29/TokenGuard/actions/workflows/go.yml/badge.svg)](https://github.com/tomascosta29/TokenGuard/actions/workflows/go.yml) 
 
-**CostaAuth** is a robust and secure authentication microservice built in Go. It provides essential authentication functionalities for securing your applications and microservice architectures. This project is designed with modularity, testability, and security best practices in mind.
+**TokenGuard** is a robust and secure authentication microservice built in Go. It provides essential authentication functionalities for securing your applications and microservice architectures. This project is designed with modularity, testability, and security best practices in mind.
 
 ## Features
 
@@ -48,7 +48,7 @@
 
     ```bash
     git clone <repository-url>
-    cd CostaAuth
+    cd TokenGuard 
     ```
 
 2.  **Create `.env` file:**
@@ -83,7 +83,7 @@
 3.  **Run the service:**
 
     ```bash
-    go run ./cmd/costa-auth/main.go
+    go run ./cmd/token-guard/main.go
     ```
 
     The service will start on the port specified in your `.env` file (default is `8080`). Check the logs for successful startup messages.
@@ -93,7 +93,7 @@
 To run the unit tests, execute the following command from the project root directory:
 
 ```bash
-go test ./... CostaAuth
+go test ./... TokenGuard
 
 **Future Work:** (in no specific order)
 

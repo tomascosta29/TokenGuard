@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/service/token_service.go
+// File: TokenGuard/./internal/service/token_service.go
 package service
 
 import (
@@ -9,7 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/tomascosta29/CostaAuth/internal/repository"
+	"github.com/tomascosta29/TokenGuard/internal/repository"
 )
 
 // Add this interface! Crucial for mocking the service for handler testing.

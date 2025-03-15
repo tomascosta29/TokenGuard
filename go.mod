@@ -1,4 +1,4 @@
-module github.com/tomascosta29/CostaAuth
+module github.com/tomascosta29/TokenGuard
 
 go 1.23.6
 

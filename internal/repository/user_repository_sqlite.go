@@ -1,4 +1,4 @@
-// File: /home/fcosta/CostaAuth/./internal/repository/user_repository_sqlite.go
+// File: TokenGuard/./internal/repository/user_repository_sqlite.go
 package repository
 
 import (
@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3" // Import the SQLite driver
-	"github.com/tomascosta29/CostaAuth/internal/model"
+	"github.com/tomascosta29/TokenGuard/internal/model"
 	// Import the SQLite driver
 )
 
