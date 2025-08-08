@@ -38,16 +38,17 @@ func main() {
 
 	// Choose TokenRepository implementation based on environment variable
 	var tokenRepo repository.TokenRepository
-	if cfg.TokenStore == "redis" {
+	switch cfg.TokenStore {
+	case "redis":
 		tokenRepo, err = repository.NewRedisTokenRepository(cfg.RedisAddress, cfg.RedisPassword)
-	} else if cfg.TokenStore == "inmemory" {
+		if err != nil {
+			log.Fatal("Failed to create token repository:", err)
+		}
+		log.Println("Redis token repository initialized.")
+	case "inmemory":
 		tokenRepo = repository.NewInMemoryTokenRepository()
-	}
-	if err != nil {
-		log.Fatal("Failed to create token repository:", err)
-	} else if cfg.TokenStore == "inmemory" {
 		log.Println("In-memory token repository initialized.")
-	} else {
+	default:
 		log.Fatalf("Invalid TOKEN_STORE environment variable: %s. Must be 'redis' or 'inmemory'.", cfg.TokenStore)
 	}
 
