@@ -213,6 +213,11 @@ func TestAuthHandler_ValidateTokenHandler(t *testing.T) {
 
 	json.Unmarshal(recorder.Body.Bytes(), &response)
 	assert.Equal(t, "testuser", response["sub"])
+	mockTokenService.AssertExpectations(t)
+
+	// Reset mocks before next test case
+	mockTokenService = new(MockTokenService)
+	handler = NewAuthHandler(mockUserService, mockTokenService)
 
 	// Test case: missing header
 	req, _ = http.NewRequest("GET", "/auth/validate", nil)
@@ -220,6 +225,20 @@ func TestAuthHandler_ValidateTokenHandler(t *testing.T) {
 	handler.ValidateTokenHandler(recorder, req)
 	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 	assert.Equal(t, "Authorization header required\n", recorder.Body.String()) // Check body content
+
+	// Test case: invalid prefix
+	req, _ = http.NewRequest("GET", "/auth/validate", nil)
+	req.Header.Set("Authorization", "Token "+tokenString)
+	recorder = httptest.NewRecorder()
+
+	handler.ValidateTokenHandler(recorder, req)
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	assert.Equal(t, "invalid authorization header\n", recorder.Body.String())
+	mockTokenService.AssertNotCalled(t, "ValidateToken", mock.Anything, mock.Anything)
+
+	// Reset mocks before invalid token test
+	mockTokenService = new(MockTokenService)
+	handler = NewAuthHandler(mockUserService, mockTokenService)
 
 	// Test case: Invalid token
 	req, _ = http.NewRequest("GET", "/auth/validate", nil)
@@ -230,9 +249,9 @@ func TestAuthHandler_ValidateTokenHandler(t *testing.T) {
 
 	handler.ValidateTokenHandler(recorder, req)
 	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	mockTokenService.AssertExpectations(t)
 
 	mockUserService.AssertExpectations(t)
-	mockTokenService.AssertExpectations(t)
 }
 
 func TestAuthHandler_LogoutHandler(t *testing.T) {
@@ -250,6 +269,11 @@ func TestAuthHandler_LogoutHandler(t *testing.T) {
 	handler.LogoutHandler(recorder, req)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
+	mockTokenService.AssertExpectations(t)
+
+	// Reset mocks before next test case
+	mockTokenService = new(MockTokenService)
+	handler = NewAuthHandler(mockUserService, mockTokenService)
 
 	// Test case: missing header
 	req, _ = http.NewRequest("POST", "/auth/logout", nil)
@@ -257,6 +281,19 @@ func TestAuthHandler_LogoutHandler(t *testing.T) {
 	handler.LogoutHandler(recorder, req)
 	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 	assert.Equal(t, "Authorization header required\n", recorder.Body.String()) // Check body content
+
+	// Test case: invalid prefix
+	req, _ = http.NewRequest("POST", "/auth/logout", nil)
+	req.Header.Set("Authorization", "Token "+tokenString)
+	recorder = httptest.NewRecorder()
+	handler.LogoutHandler(recorder, req)
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	assert.Equal(t, "invalid authorization header\n", recorder.Body.String())
+	mockTokenService.AssertNotCalled(t, "RevokeToken", mock.Anything, mock.Anything)
+
+	// Reset mocks before revoke token error test
+	mockTokenService = new(MockTokenService)
+	handler = NewAuthHandler(mockUserService, mockTokenService)
 
 	// Test case: Revoke token error
 	req, _ = http.NewRequest("POST", "/auth/logout", nil)

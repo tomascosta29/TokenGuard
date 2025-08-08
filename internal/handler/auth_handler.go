@@ -185,8 +185,12 @@ func (h *AuthHandler) ValidateTokenHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Authorization header required", http.StatusUnauthorized)
 		return
 	}
-	// JWT has "Bearer " prefix
-	tokenString := authHeader[len("Bearer "):]
+	tokenString, err := extractBearerToken(authHeader)
+	if err != nil {
+		log.Printf("ValidateTokenHandler: %v", err)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
 
 	claims, err := h.tokenService.ValidateToken(r.Context(), tokenString)
 	if err != nil {
@@ -207,8 +211,14 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Authorization header required", http.StatusUnauthorized)
 		return
 	}
-	tokenString := authHeader[len("Bearer "):]
-	err := h.tokenService.RevokeToken(r.Context(), tokenString)
+	tokenString, err := extractBearerToken(authHeader)
+	if err != nil {
+		log.Printf("LogoutHandler: %v", err)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	err = h.tokenService.RevokeToken(r.Context(), tokenString)
 	if err != nil {
 		log.Printf("LogoutHandler: Could not log out: %v", err)
 		http.Error(w, fmt.Sprintf("could not log out: %v", err), http.StatusUnauthorized)
