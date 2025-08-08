@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"net/mail"
-	"regexp"
 
 	"github.com/gorilla/mux"
 	"github.com/tomascosta29/TokenGuard/internal/model"
@@ -46,9 +45,8 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Username validation
-	usernameRegex := regexp.MustCompile(`^[a-zA-Z0-9]{3,20}$`)
-	if !usernameRegex.MatchString(req.Username) {
-		http.Error(w, "Invalid username format", http.StatusBadRequest)
+	if err := validateUsername(req.Username); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -93,9 +91,8 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate username format, same as in registration
-	usernameRegex := regexp.MustCompile(`^[a-zA-Z0-9]{3,20}$`)
-	if !usernameRegex.MatchString(req.Username) {
-		http.Error(w, "Invalid username format", http.StatusBadRequest)
+	if err := validateUsername(req.Username); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

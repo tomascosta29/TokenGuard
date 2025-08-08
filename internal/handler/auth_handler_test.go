@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -123,6 +124,24 @@ func TestAuthHandler_RegisterHandler(t *testing.T) {
 	mockTokenService = new(MockTokenService)
 	handler = NewAuthHandler(mockUserService, mockTokenService)
 
+	// Test case: Invalid username format
+	invalidUsername := "in!valid"
+	if err := validateUsername(invalidUsername); err == nil {
+		t.Fatalf("expected username '%s' to be invalid", invalidUsername)
+	}
+	reqBodyInvalidUser := fmt.Sprintf(`{"username": "%s", "email": "test@example.com", "password": "Password123!"}`, invalidUsername)
+	req, _ = http.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBodyInvalidUser))
+	recorder = httptest.NewRecorder()
+
+	handler.RegisterHandler(recorder, req)
+	assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.Equal(t, "Invalid username format\n", recorder.Body.String())
+
+	// Reset the mock for the next test case
+	mockUserService = new(MockUserService)
+	mockTokenService = new(MockTokenService)
+	handler = NewAuthHandler(mockUserService, mockTokenService)
+
 	// Test case: Registration error (e.g., username already exists)
 	req, _ = http.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBody)) // valid request
 	recorder = httptest.NewRecorder()
@@ -173,6 +192,24 @@ func TestAuthHandler_LoginHandler(t *testing.T) {
 	handler.LoginHandler(recorder, req)
 	assert.Equal(t, http.StatusBadRequest, recorder.Code)
 	assert.Equal(t, "Invalid request body\n", recorder.Body.String()) // Check body content
+
+	// Reset mocks
+	mockUserService = new(MockUserService)
+	mockTokenService = new(MockTokenService)
+	handler = NewAuthHandler(mockUserService, mockTokenService)
+
+	// Test case: Invalid username format
+	invalidUsername := "in!valid"
+	if err := validateUsername(invalidUsername); err == nil {
+		t.Fatalf("expected username '%s' to be invalid", invalidUsername)
+	}
+	reqBodyInvalidUser := fmt.Sprintf(`{"username": "%s", "password": "password123"}`, invalidUsername)
+	req, _ = http.NewRequest("POST", "/auth/login", bytes.NewBufferString(reqBodyInvalidUser))
+	recorder = httptest.NewRecorder()
+
+	handler.LoginHandler(recorder, req)
+	assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.Equal(t, "Invalid username format\n", recorder.Body.String())
 
 	// Reset mocks
 	mockUserService = new(MockUserService)
@@ -400,6 +437,30 @@ func TestValidatePasswordComplexity(t *testing.T) {
 				t.Errorf("Expected password '%s' to be invalid, but got no error", tc.password)
 			} else if tc.errMsg != "" && err.Error() != tc.errMsg {
 				t.Errorf("Expected error message '%s' for password '%s', but got: '%s'", tc.errMsg, tc.password, err.Error())
+			}
+		}
+	}
+}
+
+func TestValidateUsername(t *testing.T) {
+	testCases := []struct {
+		username string
+		isValid  bool
+	}{
+		{"validUser", true},
+		{"ab", false},
+		{"invalid!", false},
+	}
+
+	for _, tc := range testCases {
+		err := validateUsername(tc.username)
+		if tc.isValid {
+			if err != nil {
+				t.Errorf("Expected username '%s' to be valid, but got error: %v", tc.username, err)
+			}
+		} else {
+			if err == nil {
+				t.Errorf("Expected username '%s' to be invalid, but got no error", tc.username)
 			}
 		}
 	}
