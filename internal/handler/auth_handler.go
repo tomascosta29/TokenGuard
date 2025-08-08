@@ -72,8 +72,8 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)                                                       // 201 Created
 	w.Header().Set("Content-Type", "application/json")                                      // Set Content-Type
+	w.WriteHeader(http.StatusCreated)                                                       // 201 Created
 	json.NewEncoder(w).Encode(map[string]string{"message": "User registered successfully"}) // JSON response
 	log.Println("RegisterHandler: User registered successfully")
 }
@@ -224,10 +224,9 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("could not log out: %v", err), http.StatusUnauthorized)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json") // Set Content-Type
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")                                      // Set Content-Type
 	json.NewEncoder(w).Encode(map[string]string{"message": "User logged out successfully"}) // JSON response
-	fmt.Fprintln(w, "Logged out successfully")
 	log.Println("LogoutHandler: Logged out successfully")
 }
 
