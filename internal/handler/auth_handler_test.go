@@ -102,6 +102,7 @@ func TestAuthHandler_RegisterHandler(t *testing.T) {
 	handler.RegisterHandler(recorder, req)
 
 	assert.Equal(t, http.StatusCreated, recorder.Code)
+	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
 	assert.Equal(t, "{\"message\":\"User registered successfully\"}\n", recorder.Body.String())
 
 	// Reset the mock for the next test case!  This is important.
@@ -269,6 +270,8 @@ func TestAuthHandler_LogoutHandler(t *testing.T) {
 	handler.LogoutHandler(recorder, req)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
+	assert.Equal(t, "{\"message\":\"User logged out successfully\"}\n", recorder.Body.String())
 	mockTokenService.AssertExpectations(t)
 
 	// Reset mocks before next test case
