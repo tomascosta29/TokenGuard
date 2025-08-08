@@ -21,10 +21,14 @@ func AuthMiddleware(tokenService *service.TokenService) func(next http.Handler) 
 				return
 			}
 
-			// JWT has "Bearer " prefix
-			tokenString := authHeader[len("Bearer "):]
+			tokenString, err := extractBearerToken(authHeader)
+			if err != nil {
+				log.Printf("AuthMiddleware: %v", err)
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
 
-			_, err := tokenService.ValidateToken(r.Context(), tokenString)
+			_, err = tokenService.ValidateToken(r.Context(), tokenString)
 			if err != nil {
 				log.Printf("AuthMiddleware: Invalid token: %v", err)
 				http.Error(w, fmt.Sprintf("Invalid token: %v", err), http.StatusUnauthorized)
