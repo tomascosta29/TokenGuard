@@ -3,7 +3,7 @@ package config
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -15,6 +15,7 @@ type Config struct {
 	RedisPassword  string
 	JWTSecret      string
 	TokenStore     string
+	DBPath         string // Path for the SQLite database
 	MTLSEnabled    bool   // mTLS enabled flag
 	ServerCertFile string // Path to server cert
 	ServerKeyFile  string // Path to server key
@@ -22,9 +23,14 @@ type Config struct {
 }
 
 func LoadConfig(envPath string) (*Config, error) {
-	log.Println("Loading configuration from environment...")
+	slog.Info("Loading configuration from environment...")
 
 	_ = godotenv.Load(envPath)
+
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "auth.db" // Default value
+	}
 
 	cfg := &Config{
 		Port:           os.Getenv("PORT"),
@@ -32,6 +38,7 @@ func LoadConfig(envPath string) (*Config, error) {
 		RedisPassword:  os.Getenv("REDIS_PASSWORD"),
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		TokenStore:     os.Getenv("TOKEN_STORE"),
+		DBPath:         dbPath,
 		MTLSEnabled:    os.Getenv("MTLS_ENABLED") == "true", // Convert to bool
 		ServerCertFile: os.Getenv("SERVER_CERT_FILE"),
 		ServerKeyFile:  os.Getenv("SERVER_KEY_FILE"),
@@ -40,18 +47,18 @@ func LoadConfig(envPath string) (*Config, error) {
 
 	if cfg.TokenStore == "" {
 		err := fmt.Errorf("TOKEN_STORE environment variable must be set ('redis' or 'inmemory')")
-		log.Println(err.Error())
+		slog.Error(err.Error())
 		return nil, err
 	}
 
 	if cfg.MTLSEnabled {
 		if cfg.ServerCertFile == "" || cfg.ServerKeyFile == "" || cfg.CACertFile == "" {
 			err := fmt.Errorf("MTLS_ENABLED is true, but SERVER_CERT_FILE, SERVER_KEY_FILE, and CA_CERT_FILE are not all set")
-			log.Println(err.Error())
+			slog.Error(err.Error())
 			return nil, err
 		}
 	}
 
-	log.Println("Configuration loaded successfully.")
+	slog.Info("Configuration loaded successfully.")
 	return cfg, nil
 }

@@ -3,8 +3,7 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,21 +19,27 @@ import (
 )
 
 func main() {
-	log.Println("Starting TokenGuard service...")
+	// Initialize structured logger
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
+	logger.Info("Starting TokenGuard service...")
 
 	// Load configuration
 	cfg, err := config.LoadConfig(".env")
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		logger.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Config loaded successfully. Port: %s, TokenStore: %s, MTLS: %t", cfg.Port, cfg.TokenStore, cfg.MTLSEnabled)
+	logger.Info("Config loaded successfully", "port", cfg.Port, "token_store", cfg.TokenStore, "mtls", cfg.MTLSEnabled)
 
 	// Initialize database connections
-	userRepo, err := repository.NewSQLiteUserRepository("auth.db") // Use SQLite
+	userRepo, err := repository.NewSQLiteUserRepository(cfg.DBPath) // Use configured DB path
 	if err != nil {
-		log.Fatal("failed to connect to SQLite", err)
+		logger.Error("failed to connect to SQLite", "error", err)
+		os.Exit(1)
 	}
-	log.Println("SQLite user repository initialized.")
+	logger.Info("SQLite user repository initialized.")
 
 	// Choose TokenRepository implementation based on environment variable
 	var tokenRepo repository.TokenRepository
@@ -42,14 +47,16 @@ func main() {
 	case "redis":
 		tokenRepo, err = repository.NewRedisTokenRepository(cfg.RedisAddress, cfg.RedisPassword)
 		if err != nil {
-			log.Fatal("Failed to create token repository:", err)
+			logger.Error("Failed to create token repository", "error", err)
+			os.Exit(1)
 		}
-		log.Println("Redis token repository initialized.")
+		logger.Info("Redis token repository initialized.")
 	case "inmemory":
 		tokenRepo = repository.NewInMemoryTokenRepository()
-		log.Println("In-memory token repository initialized.")
+		logger.Info("In-memory token repository initialized.")
 	default:
-		log.Fatalf("Invalid TOKEN_STORE environment variable: %s. Must be 'redis' or 'inmemory'.", cfg.TokenStore)
+		logger.Error("Invalid TOKEN_STORE environment variable", "token_store", cfg.TokenStore)
+		os.Exit(1)
 	}
 
 	// Create the real bcryptPasswordChecker
@@ -57,14 +64,14 @@ func main() {
 
 	// Initialize services
 	userService := service.NewUserService(userRepo, passwordChecker) // Inject passwordChecker
-	log.Println("User service initialized.")
+	logger.Info("User service initialized.")
 
 	tokenService := service.NewTokenService(tokenRepo, []byte(cfg.JWTSecret)) // Use selected tokenRepo
-	log.Println("Token service initialized.")
+	logger.Info("Token service initialized.")
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(userService, tokenService)
-	log.Println("Auth handler initialized.")
+	authHandler := handler.NewAuthHandler(userService, tokenService, logger)
+	logger.Info("Auth handler initialized.")
 
 	// Create router and register routes
 	r := mux.NewRouter()
@@ -82,10 +89,11 @@ func main() {
 	if cfg.MTLSEnabled {
 		tlsConfig, err := app.SetupTLSConfig(cfg)
 		if err != nil {
-			log.Fatal("Failed to setup TLS config:", err)
+			logger.Error("Failed to setup TLS config", "error", err)
+			os.Exit(1)
 		}
 		server.TLSConfig = tlsConfig
-		log.Println("mTLS enabled and TLS config setup.")
+		logger.Info("mTLS enabled and TLS config setup.")
 	}
 
 	// Graceful shutdown setup
@@ -96,37 +104,36 @@ func main() {
 		<-sigint
 
 		// We received an interrupt signal, shut down.
-		log.Println("Shutting down server...")
+		logger.Info("Shutting down server...")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		if err := server.Shutdown(ctx); err != nil {
 			// Error from closing listeners, or context timeout:
-			log.Printf("HTTP server Shutdown: %v", err)
+			logger.Error("HTTP server Shutdown", "error", err)
 		}
 		close(idleConnsClosed)
 	}()
 
 	// Start the server (with or without TLS)
-	fmt.Printf("Starting server on port %s (mTLS: %t)\n", cfg.Port, cfg.MTLSEnabled)
+	logger.Info("Starting server", "port", cfg.Port, "mTLS", cfg.MTLSEnabled)
 	if cfg.MTLSEnabled {
 		// Start with TLS
 		// Use ListenAndServeTLS with empty strings for cert and key,
 		// because they are already loaded in server.TLSConfig
-		// Use ListenAndServeTLS with empty strings for cert and key,
-		// because they are already loaded in server.TLSConfig
-		log.Printf("Starting server with TLS on port %s", cfg.Port)
+		logger.Info("Starting server with TLS", "port", cfg.Port)
 		err = server.ListenAndServeTLS("", "") // Use ListenAndServeTLS
 	} else {
 		// Start without TLS
-		log.Printf("Starting server without TLS on port %s", cfg.Port)
+		logger.Info("Starting server without TLS", "port", cfg.Port)
 		err = server.ListenAndServe()
 	}
 
 	if err != http.ErrServerClosed {
-		log.Fatalf("HTTP server ListenAndServe: %v", err)
+		logger.Error("HTTP server ListenAndServe", "error", err)
+		os.Exit(1)
 	}
 
 	<-idleConnsClosed
-	log.Println("Server gracefully stopped")
+	logger.Info("Server gracefully stopped")
 }

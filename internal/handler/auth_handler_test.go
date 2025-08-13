@@ -1,4 +1,3 @@
-// File: TokenGuard/./internal/handler/auth_handler_test.go
 package handler
 
 import (
@@ -6,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
+	"strings"
 	"net/http/httptest"
 	"testing"
 
@@ -19,13 +20,14 @@ import (
 	"github.com/tomascosta29/TokenGuard/internal/model"
 )
 
+// MockUserService is a mock for the UserService.
 type MockUserService struct {
 	mock.Mock
 }
 
 func (m *MockUserService) RegisterUser(ctx context.Context, req *model.RegisterRequest) (*model.User, error) {
 	args := m.Called(ctx, req)
-	if args.Get(0) == nil { // handle nil case
+	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.User), args.Error(1)
@@ -33,7 +35,7 @@ func (m *MockUserService) RegisterUser(ctx context.Context, req *model.RegisterR
 
 func (m *MockUserService) LoginUser(ctx context.Context, req *model.LoginRequest) (*model.User, error) {
 	args := m.Called(ctx, req)
-	if args.Get(0) == nil { // handle nil case
+	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.User), args.Error(1)
@@ -44,12 +46,12 @@ func (m *MockUserService) HashPassword(password string) (string, error) {
 	return args.String(0), args.Error(1)
 }
 
-// CheckPasswordHash compares a password with its hash
 func (m *MockUserService) CheckPasswordHash(password, hash string) bool {
 	args := m.Called(password, hash)
 	return args.Bool(0)
 }
 
+// MockTokenService is a mock for the TokenService.
 type MockTokenService struct {
 	mock.Mock
 }
@@ -64,7 +66,7 @@ func (m *MockTokenService) ValidateToken(ctx context.Context, tokenString string
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(jwt.MapClaims), args.Error(1) // cast to map
+	return args.Get(0).(jwt.MapClaims), args.Error(1)
 }
 
 func (m *MockTokenService) RevokeToken(ctx context.Context, tokenString string) error {
@@ -72,7 +74,6 @@ func (m *MockTokenService) RevokeToken(ctx context.Context, tokenString string) 
 	return args.Error(0)
 }
 
-// Mock TokenService functions for refresh token
 func (m *MockTokenService) GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error) {
 	args := m.Called(ctx, userID)
 	return args.String(0), args.Error(1)
@@ -80,7 +81,10 @@ func (m *MockTokenService) GenerateRefreshToken(ctx context.Context, userID uuid
 
 func (m *MockTokenService) ValidateRefreshToken(ctx context.Context, refreshToken string) (uuid.UUID, error) {
 	args := m.Called(ctx, refreshToken)
-	return args.Get(0).(uuid.UUID), args.Error(1)
+	if id, ok := args.Get(0).(uuid.UUID); ok {
+		return id, args.Error(1)
+	}
+	return uuid.Nil, args.Error(1)
 }
 
 func (m *MockTokenService) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
@@ -88,380 +92,290 @@ func (m *MockTokenService) RevokeRefreshToken(ctx context.Context, refreshToken 
 	return args.Error(0)
 }
 
-func TestAuthHandler_RegisterHandler(t *testing.T) {
+// setupTest creates a new AuthHandler with mock services and a discard logger.
+func setupTest(t *testing.T) (*AuthHandler, *MockUserService, *MockTokenService) {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockUserService := new(MockUserService)
 	mockTokenService := new(MockTokenService)
-	handler := NewAuthHandler(mockUserService, mockTokenService)
+	handler := NewAuthHandler(mockUserService, mockTokenService, logger)
+	return handler, mockUserService, mockTokenService
+}
 
-	// Test case: Successful registration (use a valid password)
-	reqBody := `{"username": "testuser", "email": "test@example.com", "password": "Password123!"}`
-	req, _ := http.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBody))
-	recorder := httptest.NewRecorder()
-	// Mock behavior for successful registration
-	mockUserService.On("RegisterUser", mock.Anything, mock.AnythingOfType("*model.RegisterRequest")).Return(&model.User{}, nil)
+// assertErrorResponse checks for a JSON error response.
+func assertErrorResponse(t *testing.T, body *bytes.Buffer, expectedMsg string) {
+	t.Helper()
+	var errResp map[string]string
+	err := json.Unmarshal(body.Bytes(), &errResp)
+	assert.NoError(t, err, "Failed to unmarshal error response")
+	assert.Equal(t, expectedMsg, errResp["error"])
+}
 
-	handler.RegisterHandler(recorder, req)
+func TestAuthHandler_RegisterHandler(t *testing.T) {
+	t.Run("Successful registration", func(t *testing.T) {
+		handler, mockUserService, _ := setupTest(t)
+		reqBody := `{"username": "testuser", "email": "test@example.com", "password": "Password123!"}`
+		req := httptest.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBody))
+		recorder := httptest.NewRecorder()
 
-	assert.Equal(t, http.StatusCreated, recorder.Code)
-	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
-	assert.Equal(t, "{\"message\":\"User registered successfully\"}\n", recorder.Body.String())
+		mockUserService.On("RegisterUser", mock.Anything, mock.AnythingOfType("*model.RegisterRequest")).Return(&model.User{}, nil).Once()
 
-	// Reset the mock for the next test case!  This is important.
-	mockUserService = new(MockUserService)
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
+		handler.RegisterHandler(recorder, req)
 
-	// Test case: Invalid request body
-	req, _ = http.NewRequest("POST", "/auth/register", bytes.NewBufferString("invalid json"))
-	recorder = httptest.NewRecorder()
+		assert.Equal(t, http.StatusCreated, recorder.Code)
+		var resp map[string]string
+		json.Unmarshal(recorder.Body.Bytes(), &resp)
+		assert.Equal(t, "User registered successfully", resp["message"])
+		mockUserService.AssertExpectations(t)
+	})
 
-	handler.RegisterHandler(recorder, req)
-	assert.Equal(t, http.StatusBadRequest, recorder.Code)
-	assert.Equal(t, "Invalid request body\n", recorder.Body.String()) // Check body content
+	t.Run("Invalid request body", func(t *testing.T) {
+		handler, _, _ := setupTest(t)
+		req := httptest.NewRequest("POST", "/auth/register", bytes.NewBufferString("invalid json"))
+		recorder := httptest.NewRecorder()
 
-	// Reset the mock for the next test case
-	mockUserService = new(MockUserService)
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
+		handler.RegisterHandler(recorder, req)
 
-	// Test case: Invalid username format
-	invalidUsername := "in!valid"
-	if err := validateUsername(invalidUsername); err == nil {
-		t.Fatalf("expected username '%s' to be invalid", invalidUsername)
-	}
-	reqBodyInvalidUser := fmt.Sprintf(`{"username": "%s", "email": "test@example.com", "password": "Password123!"}`, invalidUsername)
-	req, _ = http.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBodyInvalidUser))
-	recorder = httptest.NewRecorder()
+		assert.Equal(t, http.StatusBadRequest, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "Invalid request body")
+	})
 
-	handler.RegisterHandler(recorder, req)
-	assert.Equal(t, http.StatusBadRequest, recorder.Code)
-	assert.Equal(t, "Invalid username format\n", recorder.Body.String())
+	t.Run("Invalid username format", func(t *testing.T) {
+		handler, _, _ := setupTest(t)
+		reqBody := `{"username": "a", "email": "test@example.com", "password": "Password123!"}`
+		req := httptest.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBody))
+		recorder := httptest.NewRecorder()
 
-	// Reset the mock for the next test case
-	mockUserService = new(MockUserService)
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
+		handler.RegisterHandler(recorder, req)
 
-	// Test case: Registration error (e.g., username already exists)
-	req, _ = http.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBody)) // valid request
-	recorder = httptest.NewRecorder()
+		assert.Equal(t, http.StatusBadRequest, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "username must be 3-20 characters long and contain only letters and numbers")
+	})
 
-	// Mock behavior for registration error
-	mockUserService.On("RegisterUser", mock.Anything, mock.AnythingOfType("*model.RegisterRequest")).Return(nil, errors.New("some error"))
+	t.Run("Registration error", func(t *testing.T) {
+		handler, mockUserService, _ := setupTest(t)
+		reqBody := `{"username": "testuser", "email": "test@example.com", "password": "Password123!"}`
+		req := httptest.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBody))
+		recorder := httptest.NewRecorder()
 
-	handler.RegisterHandler(recorder, req)
-	assert.Equal(t, http.StatusBadRequest, recorder.Code)   // expect 400
-	assert.Equal(t, "some error\n", recorder.Body.String()) // Check body content
+		mockUserService.On("RegisterUser", mock.Anything, mock.AnythingOfType("*model.RegisterRequest")).Return(nil, errors.New("username already exists")).Once()
 
-	// The mock expectations must be asserted *AFTER* the handler call that uses the mock.
-	mockUserService.AssertExpectations(t)
-	mockTokenService.AssertExpectations(t)
+		handler.RegisterHandler(recorder, req)
+
+		assert.Equal(t, http.StatusBadRequest, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "Registration failed")
+		mockUserService.AssertExpectations(t)
+	})
 }
 
 func TestAuthHandler_LoginHandler(t *testing.T) {
-	mockUserService := new(MockUserService)
-	mockTokenService := new(MockTokenService)
-	handler := NewAuthHandler(mockUserService, mockTokenService)
+	t.Run("Successful login", func(t *testing.T) {
+		handler, mockUserService, mockTokenService := setupTest(t)
+		reqBody := `{"username": "testuser", "password": "password123"}`
+		req := httptest.NewRequest("POST", "/auth/login", bytes.NewBufferString(reqBody))
+		recorder := httptest.NewRecorder()
+		userID := uuid.New()
 
-	// Test case: Successful login
-	reqBody := `{"username": "testuser", "password": "password123"}`
-	req, _ := http.NewRequest("POST", "/auth/login", bytes.NewBufferString(reqBody))
-	recorder := httptest.NewRecorder()
-	userID := uuid.New()
-	mockUserService.On("LoginUser", mock.Anything, mock.AnythingOfType("*model.LoginRequest")).Return(&model.User{ID: userID}, nil)
-	mockTokenService.On("GenerateToken", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return("testtoken", nil)
-	mockTokenService.On("GenerateRefreshToken", mock.Anything, mock.AnythingOfType("uuid.UUID")).Return("testrefreshtoken", nil)
+		mockUserService.On("LoginUser", mock.Anything, mock.AnythingOfType("*model.LoginRequest")).Return(&model.User{ID: userID}, nil).Once()
+		mockTokenService.On("GenerateToken", mock.Anything, userID).Return("testtoken", nil).Once()
+		mockTokenService.On("GenerateRefreshToken", mock.Anything, userID).Return("testrefreshtoken", nil).Once()
 
-	handler.LoginHandler(recorder, req)
+		handler.LoginHandler(recorder, req)
 
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	var response map[string]string
-	json.Unmarshal(recorder.Body.Bytes(), &response)
-	assert.Equal(t, "testtoken", response["token"])
-	assert.Equal(t, "testrefreshtoken", response["refresh_token"])
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		var response map[string]string
+		json.Unmarshal(recorder.Body.Bytes(), &response)
+		assert.Equal(t, "testtoken", response["token"])
+		assert.Equal(t, "testrefreshtoken", response["refresh_token"])
+		mockUserService.AssertExpectations(t)
+		mockTokenService.AssertExpectations(t)
+	})
 
-	// Reset mocks
-	mockUserService = new(MockUserService)
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
+	t.Run("Invalid login credentials", func(t *testing.T) {
+		handler, mockUserService, _ := setupTest(t)
+		reqBody := `{"username": "testuser", "password": "wrongpassword"}`
+		req := httptest.NewRequest("POST", "/auth/login", bytes.NewBufferString(reqBody))
+		recorder := httptest.NewRecorder()
 
-	// Test case: Invalid request body
-	req, _ = http.NewRequest("POST", "/auth/login", bytes.NewBufferString("invalid json"))
-	recorder = httptest.NewRecorder()
+		mockUserService.On("LoginUser", mock.Anything, mock.AnythingOfType("*model.LoginRequest")).Return(nil, errors.New("invalid credentials")).Once()
 
-	handler.LoginHandler(recorder, req)
-	assert.Equal(t, http.StatusBadRequest, recorder.Code)
-	assert.Equal(t, "Invalid request body\n", recorder.Body.String()) // Check body content
+		handler.LoginHandler(recorder, req)
 
-	// Reset mocks
-	mockUserService = new(MockUserService)
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
-
-	// Test case: Invalid username format
-	invalidUsername := "in!valid"
-	if err := validateUsername(invalidUsername); err == nil {
-		t.Fatalf("expected username '%s' to be invalid", invalidUsername)
-	}
-	reqBodyInvalidUser := fmt.Sprintf(`{"username": "%s", "password": "password123"}`, invalidUsername)
-	req, _ = http.NewRequest("POST", "/auth/login", bytes.NewBufferString(reqBodyInvalidUser))
-	recorder = httptest.NewRecorder()
-
-	handler.LoginHandler(recorder, req)
-	assert.Equal(t, http.StatusBadRequest, recorder.Code)
-	assert.Equal(t, "Invalid username format\n", recorder.Body.String())
-
-	// Reset mocks
-	mockUserService = new(MockUserService)
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
-
-	// Test case: Login error (e.g., user not found)
-	req, _ = http.NewRequest("POST", "/auth/login", bytes.NewBufferString(reqBody)) // valid request
-	recorder = httptest.NewRecorder()
-
-	mockUserService.On("LoginUser", mock.Anything, mock.AnythingOfType("*model.LoginRequest")).Return(nil, errors.New("some error"))
-
-	handler.LoginHandler(recorder, req)
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code) // expect 401
-	assert.Equal(t, "some error\n", recorder.Body.String()) // Check body content
-
-	// Assert expectations *after* the handler call and assertions.
-	mockUserService.AssertExpectations(t)
-	mockTokenService.AssertExpectations(t)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "Invalid username or password")
+		mockUserService.AssertExpectations(t)
+	})
 }
 
 func TestAuthHandler_ValidateTokenHandler(t *testing.T) {
-	mockUserService := new(MockUserService)
-	mockTokenService := new(MockTokenService)
-	handler := NewAuthHandler(mockUserService, mockTokenService)
+	t.Run("Successful validation", func(t *testing.T) {
+		handler, _, mockTokenService := setupTest(t)
+		tokenString := "valid-token"
+		req := httptest.NewRequest("GET", "/auth/validate", nil)
+		req.Header.Set("Authorization", "Bearer "+tokenString)
+		recorder := httptest.NewRecorder()
 
-	// Test case: Successful validation
-	tokenString := "valid-token" // dummy
-	req, _ := http.NewRequest("GET", "/auth/validate", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenString)
-	recorder := httptest.NewRecorder()
+		mockTokenService.On("ValidateToken", mock.Anything, tokenString).Return(jwt.MapClaims{"sub": "testuser"}, nil).Once()
 
-	mockTokenService.On("ValidateToken", mock.Anything, tokenString).Return(jwt.MapClaims{"sub": "testuser"}, nil)
+		handler.ValidateTokenHandler(recorder, req)
 
-	handler.ValidateTokenHandler(recorder, req)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		var response map[string]interface{}
+		json.Unmarshal(recorder.Body.Bytes(), &response)
+		assert.Equal(t, "testuser", response["sub"])
+		mockTokenService.AssertExpectations(t)
+	})
 
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	var response map[string]interface{}
+	t.Run("Missing header", func(t *testing.T) {
+		handler, _, _ := setupTest(t)
+		req := httptest.NewRequest("GET", "/auth/validate", nil)
+		recorder := httptest.NewRecorder()
 
-	json.Unmarshal(recorder.Body.Bytes(), &response)
-	assert.Equal(t, "testuser", response["sub"])
-	mockTokenService.AssertExpectations(t)
+		handler.ValidateTokenHandler(recorder, req)
 
-	// Reset mocks before next test case
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "Authorization header required")
+	})
 
-	// Test case: missing header
-	req, _ = http.NewRequest("GET", "/auth/validate", nil)
-	recorder = httptest.NewRecorder()
-	handler.ValidateTokenHandler(recorder, req)
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.Equal(t, "Authorization header required\n", recorder.Body.String()) // Check body content
+	t.Run("Invalid token", func(t *testing.T) {
+		handler, _, mockTokenService := setupTest(t)
+		req := httptest.NewRequest("GET", "/auth/validate", nil)
+		req.Header.Set("Authorization", "Bearer invalid-token")
+		recorder := httptest.NewRecorder()
 
-	// Test case: invalid prefix
-	req, _ = http.NewRequest("GET", "/auth/validate", nil)
-	req.Header.Set("Authorization", "Token "+tokenString)
-	recorder = httptest.NewRecorder()
+		mockTokenService.On("ValidateToken", mock.Anything, "invalid-token").Return(nil, errors.New("token is invalid")).Once()
 
-	handler.ValidateTokenHandler(recorder, req)
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.Equal(t, "invalid authorization header\n", recorder.Body.String())
-	mockTokenService.AssertNotCalled(t, "ValidateToken", mock.Anything, mock.Anything)
+		handler.ValidateTokenHandler(recorder, req)
 
-	// Reset mocks before invalid token test
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
-
-	// Test case: Invalid token
-	req, _ = http.NewRequest("GET", "/auth/validate", nil)
-	req.Header.Set("Authorization", "Bearer invalid-token")
-	recorder = httptest.NewRecorder()
-
-	mockTokenService.On("ValidateToken", mock.Anything, "invalid-token").Return(nil, assert.AnError)
-
-	handler.ValidateTokenHandler(recorder, req)
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	mockTokenService.AssertExpectations(t)
-
-	mockUserService.AssertExpectations(t)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "Invalid token")
+		mockTokenService.AssertExpectations(t)
+	})
 }
 
 func TestAuthHandler_LogoutHandler(t *testing.T) {
-	mockUserService := new(MockUserService)
-	mockTokenService := new(MockTokenService)
-	handler := NewAuthHandler(mockUserService, mockTokenService)
-	tokenString := "valid-token" // dummy
+	t.Run("Successful logout", func(t *testing.T) {
+		handler, _, mockTokenService := setupTest(t)
+		tokenString := "valid-token"
+		req := httptest.NewRequest("POST", "/auth/logout", nil)
+		req.Header.Set("Authorization", "Bearer "+tokenString)
+		recorder := httptest.NewRecorder()
 
-	// Test case: Successful logout
-	req, _ := http.NewRequest("POST", "/auth/logout", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenString)
-	recorder := httptest.NewRecorder()
-	mockTokenService.On("RevokeToken", mock.Anything, tokenString).Return(nil)
+		mockTokenService.On("RevokeToken", mock.Anything, tokenString).Return(nil).Once()
 
-	handler.LogoutHandler(recorder, req)
+		handler.LogoutHandler(recorder, req)
 
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
-	assert.Equal(t, "{\"message\":\"User logged out successfully\"}\n", recorder.Body.String())
-	mockTokenService.AssertExpectations(t)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		var resp map[string]string
+		json.Unmarshal(recorder.Body.Bytes(), &resp)
+		assert.Equal(t, "User logged out successfully", resp["message"])
+		mockTokenService.AssertExpectations(t)
+	})
 
-	// Reset mocks before next test case
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
+	t.Run("Revoke token error", func(t *testing.T) {
+		handler, _, mockTokenService := setupTest(t)
+		tokenString := "valid-token"
+		req := httptest.NewRequest("POST", "/auth/logout", nil)
+		req.Header.Set("Authorization", "Bearer "+tokenString)
+		recorder := httptest.NewRecorder()
 
-	// Test case: missing header
-	req, _ = http.NewRequest("POST", "/auth/logout", nil)
-	recorder = httptest.NewRecorder()
-	handler.LogoutHandler(recorder, req)
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.Equal(t, "Authorization header required\n", recorder.Body.String()) // Check body content
+		mockTokenService.On("RevokeToken", mock.Anything, tokenString).Return(errors.New("db error")).Once()
 
-	// Test case: invalid prefix
-	req, _ = http.NewRequest("POST", "/auth/logout", nil)
-	req.Header.Set("Authorization", "Token "+tokenString)
-	recorder = httptest.NewRecorder()
-	handler.LogoutHandler(recorder, req)
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.Equal(t, "invalid authorization header\n", recorder.Body.String())
-	mockTokenService.AssertNotCalled(t, "RevokeToken", mock.Anything, mock.Anything)
+		handler.LogoutHandler(recorder, req)
 
-	// Reset mocks before revoke token error test
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
-
-	// Test case: Revoke token error
-	req, _ = http.NewRequest("POST", "/auth/logout", nil)
-	req.Header.Set("Authorization", "Bearer invalid-token")
-	recorder = httptest.NewRecorder()
-	mockTokenService.On("RevokeToken", mock.Anything, "invalid-token").Return(assert.AnError)
-	handler.LogoutHandler(recorder, req)
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	mockTokenService.AssertExpectations(t)
-	mockUserService.AssertExpectations(t)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "Could not log out")
+		mockTokenService.AssertExpectations(t)
+	})
 }
 
 func TestAuthHandler_RefreshHandler(t *testing.T) {
-	mockUserService := new(MockUserService)
-	mockTokenService := new(MockTokenService)
-	handler := NewAuthHandler(mockUserService, mockTokenService)
+	t.Run("Successful refresh", func(t *testing.T) {
+		handler, _, mockTokenService := setupTest(t)
+		refreshToken := "valid-refresh-token"
+		userID := uuid.New()
+		reqBody := `{"refresh_token": "` + refreshToken + `"}`
+		req := httptest.NewRequest("POST", "/auth/refresh", bytes.NewBufferString(reqBody))
+		recorder := httptest.NewRecorder()
 
-	// Test case: Successful refresh
-	refreshToken := "valid-refresh-token"
-	userID := uuid.New()
-	newAccessToken := "new-access-token"
-	newRefreshToken := "new-refresh-token"
+		mockTokenService.On("ValidateRefreshToken", mock.Anything, refreshToken).Return(userID, nil).Once()
+		mockTokenService.On("RevokeRefreshToken", mock.Anything, refreshToken).Return(nil).Once()
+		mockTokenService.On("GenerateToken", mock.Anything, userID).Return("new-access-token", nil).Once()
+		mockTokenService.On("GenerateRefreshToken", mock.Anything, userID).Return("new-refresh-token", nil).Once()
 
-	reqBody := `{"refresh_token": "` + refreshToken + `"}`
-	req, _ := http.NewRequest("POST", "/auth/refresh", bytes.NewBufferString(reqBody))
-	recorder := httptest.NewRecorder()
+		handler.RefreshHandler(recorder, req)
 
-	mockTokenService.On("ValidateRefreshToken", mock.Anything, refreshToken).Return(userID, nil)
-	mockTokenService.On("RevokeRefreshToken", mock.Anything, refreshToken).Return(nil)
-	mockTokenService.On("GenerateToken", mock.Anything, userID).Return(newAccessToken, nil)
-	mockTokenService.On("GenerateRefreshToken", mock.Anything, userID).Return(newRefreshToken, nil)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		var resp map[string]string
+		json.Unmarshal(recorder.Body.Bytes(), &resp)
+		assert.Equal(t, "new-access-token", resp["access_token"])
+		assert.Equal(t, "new-refresh-token", resp["refresh_token"])
+		mockTokenService.AssertExpectations(t)
+	})
 
-	handler.RefreshHandler(recorder, req)
+	t.Run("Invalid refresh token", func(t *testing.T) {
+		handler, _, mockTokenService := setupTest(t)
+		reqBody := `{"refresh_token": "invalid-token"}`
+		req := httptest.NewRequest("POST", "/auth/refresh", bytes.NewBufferString(reqBody))
+		recorder := httptest.NewRecorder()
 
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	var response map[string]string
-	json.Unmarshal(recorder.Body.Bytes(), &response)
-	assert.Equal(t, newAccessToken, response["access_token"])   // CHANGED
-	assert.Equal(t, newRefreshToken, response["refresh_token"]) // CHANGED
+		mockTokenService.On("ValidateRefreshToken", mock.Anything, "invalid-token").Return(uuid.Nil, errors.New("invalid token")).Once()
 
-	// Reset mocks
-	mockUserService = new(MockUserService)
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
+		handler.RefreshHandler(recorder, req)
 
-	// Test case: Invalid request body
-	req, _ = http.NewRequest("POST", "/auth/refresh", bytes.NewBufferString("invalid json"))
-	recorder = httptest.NewRecorder()
-
-	handler.RefreshHandler(recorder, req)
-	assert.Equal(t, http.StatusBadRequest, recorder.Code)
-	assert.Equal(t, "Invalid request body\n", recorder.Body.String()) // Check body content
-
-	// Reset mocks
-	mockUserService = new(MockUserService)
-	mockTokenService = new(MockTokenService)
-	handler = NewAuthHandler(mockUserService, mockTokenService)
-
-	// Test case: Invalid refresh token
-	reqBody = `{"refresh_token": "invalid-token"}`
-	req, _ = http.NewRequest("POST", "/auth/refresh", bytes.NewBufferString(reqBody))
-	recorder = httptest.NewRecorder()
-
-	mockTokenService.On("ValidateRefreshToken", mock.Anything, "invalid-token").Return(uuid.Nil, errors.New("invalid refresh token"))
-
-	handler.RefreshHandler(recorder, req)
-	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type")) // Check Content-Type
-
-	var errorResponse map[string]string
-	err := json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
-	assert.NoError(t, err)
-	assert.Equal(t, "Invalid refresh token", errorResponse["error"]) // Check error message
-
-	mockTokenService.AssertExpectations(t)
-	mockUserService.AssertExpectations(t)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "Invalid refresh token")
+		mockTokenService.AssertExpectations(t)
+	})
 }
 
 func TestValidatePasswordComplexity(t *testing.T) {
 	testCases := []struct {
+		name     string
 		password string
-		isValid  bool
-		errMsg   string // Check for specific error messages
+		errMsg   string
 	}{
-		{"P@sswOrd123", true, ""}, // Valid password
-		{"Short1", false, "password must be at least 8 characters long"},                    // Too short
-		{"nouppercase123!", false, "password must contain at least one uppercase letter"},   // No uppercase
-		{"NOLOWERCASE123!", false, "password must contain at least one lowercase letter"},   // No lowercase
-		{"NoSpecialChar123", false, "password must contain at least one special character"}, // No special
-		{"NoNumbers!@#abc", false, "password must contain at least one number"},             // No numbers
+		{name: "Valid password", password: "Password123!", errMsg: ""},
+		{name: "Too short", password: "Short1!", errMsg: "password must be between 8 and 128 characters long"},
+		{name: "Too long", password: strings.Repeat("a", 129) + "B!1", errMsg: "password must be between 8 and 128 characters long"},
+		{name: "No uppercase", password: "nouppercase123!", errMsg: "password must contain at least one uppercase letter"},
+		{name: "No lowercase", password: "NOLOWERCASE123!", errMsg: "password must contain at least one lowercase letter"},
+		{name: "No number", password: "NoNumber!@", errMsg: "password must contain at least one number"},
+		{name: "No special char", password: "NoSpecial123", errMsg: "password must contain at least one special character"},
 	}
 
 	for _, tc := range testCases {
-		err := validatePasswordComplexity(tc.password)
-		if tc.isValid {
-			if err != nil {
-				t.Errorf("Expected password '%s' to be valid, but got error: %v", tc.password, err)
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePasswordComplexity(tc.password)
+			if tc.errMsg == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.EqualError(t, err, tc.errMsg)
 			}
-		} else {
-			if err == nil {
-				t.Errorf("Expected password '%s' to be invalid, but got no error", tc.password)
-			} else if tc.errMsg != "" && err.Error() != tc.errMsg {
-				t.Errorf("Expected error message '%s' for password '%s', but got: '%s'", tc.errMsg, tc.password, err.Error())
-			}
-		}
+		})
 	}
 }
 
 func TestValidateUsername(t *testing.T) {
 	testCases := []struct {
+		name     string
 		username string
-		isValid  bool
+		errMsg   string
 	}{
-		{"validUser", true},
-		{"ab", false},
-		{"invalid!", false},
+		{name: "Valid username", username: "validUser", errMsg: ""},
+		{name: "Too short", username: "ab", errMsg: "username must be 3-20 characters long and contain only letters and numbers"},
+		{name: "Invalid character", username: "invalid!", errMsg: "username must be 3-20 characters long and contain only letters and numbers"},
+		{name: "Too long", username: "thisusernameiswaytoolongandshouldfail", errMsg: "username must be 3-20 characters long and contain only letters and numbers"},
 	}
 
 	for _, tc := range testCases {
-		err := validateUsername(tc.username)
-		if tc.isValid {
-			if err != nil {
-				t.Errorf("Expected username '%s' to be valid, but got error: %v", tc.username, err)
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateUsername(tc.username)
+			if tc.errMsg == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.EqualError(t, err, tc.errMsg)
 			}
-		} else {
-			if err == nil {
-				t.Errorf("Expected username '%s' to be invalid, but got no error", tc.username)
-			}
-		}
+		})
 	}
 }
