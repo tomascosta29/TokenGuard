@@ -3,75 +3,61 @@ package config
 import (
 	"fmt"
 	"log/slog"
-	"os"
-	"strconv"
+	"strings"
 
-	"github.com/joho/godotenv"
+	"github.com/spf13/viper"
 )
 
 type Config struct {
-	Port               string
-	RedisAddress       string
-	RedisPassword      string
-	JWTSecret          string
-	TokenStore         string
-	DBPath             string // Path for the SQLite database
-	MTLSEnabled        bool   // mTLS enabled flag
-	ServerCertFile     string // Path to server cert
-	ServerKeyFile      string // Path to server key
-	CACertFile         string // Path to CA cert
-	RateLimit          float64
-	RateBurst          int
-	RateLimiterEnabled bool
+	Port               string  `mapstructure:"PORT"`
+	RedisAddress       string  `mapstructure:"REDIS_ADDRESS"`
+	RedisPassword      string  `mapstructure:"REDIS_PASSWORD"`
+	JWTSecret          string  `mapstructure:"JWT_SECRET"`
+	TokenStore         string  `mapstructure:"TOKEN_STORE"`
+	DBPath             string  `mapstructure:"DB_PATH"`
+	MTLSEnabled        bool    `mapstructure:"MTLS_ENABLED"`
+	ServerCertFile     string  `mapstructure:"SERVER_CERT_FILE"`
+	ServerKeyFile      string  `mapstructure:"SERVER_KEY_FILE"`
+	CACertFile         string  `mapstructure:"CA_CERT_FILE"`
+	RateLimit          float64 `mapstructure:"RATE_LIMIT"`
+	RateBurst          int     `mapstructure:"RATE_BURST"`
+	RateLimiterEnabled bool    `mapstructure:"RATE_LIMITER_ENABLED"`
+	AdminAPIKey        string  `mapstructure:"ADMIN_API_KEY"`
 }
 
-func LoadConfig(envPath string) (*Config, error) {
-	slog.Info("Loading configuration from environment...")
+func LoadConfig(path string) (*Config, error) {
+	slog.Info("Loading configuration...", "path", path)
 
-	_ = godotenv.Load(envPath)
+	// Set default values
+	viper.SetDefault("PORT", "8080")
+	viper.SetDefault("TOKEN_STORE", "inmemory")
+	viper.SetDefault("DB_PATH", "auth.db")
+	viper.SetDefault("RATE_LIMITER_ENABLED", true)
+	viper.SetDefault("RATE_LIMIT", 10.0)
+	viper.SetDefault("RATE_BURST", 5)
+	viper.SetDefault("MTLS_ENABLED", false)
+	viper.SetDefault("ADMIN_API_KEY", "default-admin-key")
 
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		dbPath = "auth.db" // Default value
+	// Configure Viper to read from a file
+	viper.AddConfigPath(path)
+	viper.SetConfigName(".env")
+	viper.SetConfigType("env")
+
+	// Configure Viper to automatically read from environment variables
+	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// Read the config file
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			slog.Warn("Config file not found; relying on environment variables and defaults.")
+		} else {
+			return nil, err
+		}
 	}
 
-	rateLimitStr := os.Getenv("RATE_LIMIT")
-	if rateLimitStr == "" {
-		rateLimitStr = "10" // Default to 10 requests per second
-	}
-	rateLimit, err := strconv.ParseFloat(rateLimitStr, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid RATE_LIMIT value: %w", err)
-	}
-
-	rateBurstStr := os.Getenv("RATE_BURST")
-	if rateBurstStr == "" {
-		rateBurstStr = "5" // Default to a burst of 5 requests
-	}
-	rateBurst, err := strconv.Atoi(rateBurstStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid RATE_BURST value: %w", err)
-	}
-
-	cfg := &Config{
-		Port:               os.Getenv("PORT"),
-		RedisAddress:       os.Getenv("REDIS_ADDRESS"),
-		RedisPassword:      os.Getenv("REDIS_PASSWORD"),
-		JWTSecret:          os.Getenv("JWT_SECRET"),
-		TokenStore:         os.Getenv("TOKEN_STORE"),
-		DBPath:             dbPath,
-		MTLSEnabled:        os.Getenv("MTLS_ENABLED") == "true", // Convert to bool
-		ServerCertFile:     os.Getenv("SERVER_CERT_FILE"),
-		ServerKeyFile:      os.Getenv("SERVER_KEY_FILE"),
-		CACertFile:         os.Getenv("CA_CERT_FILE"),
-		RateLimit:          rateLimit,
-		RateBurst:          rateBurst,
-		RateLimiterEnabled: os.Getenv("RATE_LIMITER_ENABLED") == "true",
-	}
-
-	if cfg.TokenStore == "" {
-		err := fmt.Errorf("TOKEN_STORE environment variable must be set ('redis' or 'inmemory')")
-		slog.Error(err.Error())
+	var cfg Config
+	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
 
@@ -84,5 +70,5 @@ func LoadConfig(envPath string) (*Config, error) {
 	}
 
 	slog.Info("Configuration loaded successfully.")
-	return cfg, nil
+	return &cfg, nil
 }

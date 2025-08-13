@@ -15,3 +15,7 @@ type RegisterRequest struct {
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
+
+type AdminRevokeRequest struct {
+	UserID string `json:"user_id"`
+}

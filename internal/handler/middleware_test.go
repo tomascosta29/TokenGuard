@@ -118,3 +118,24 @@ func TestRateLimitMiddleware(t *testing.T) {
 		assertErrorResponse(t, recorder2.Body, "Too Many Requests")
 	})
 }
+
+func TestSecurityHeadersMiddleware(t *testing.T) {
+	// A dummy handler that does nothing.
+	dummyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Create the middleware instance
+	handlerToTest := SecurityHeadersMiddleware(dummyHandler)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	recorder := httptest.NewRecorder()
+
+	handlerToTest.ServeHTTP(recorder, req)
+
+	// Check that the headers are set correctly
+	assert.Equal(t, "default-src 'self';", recorder.Header().Get("Content-Security-Policy"))
+	assert.Equal(t, "nosniff", recorder.Header().Get("X-Content-Type-Options"))
+	assert.Equal(t, "DENY", recorder.Header().Get("X-Frame-Options"))
+	assert.Equal(t, "max-age=63072000; includeSubDomains", recorder.Header().Get("Strict-Transport-Security"))
+}

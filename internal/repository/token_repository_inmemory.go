@@ -1,4 +1,3 @@
-// File: TokenGuard/./internal/repository/token_repository_inmemory.go
 package repository
 
 import (
@@ -11,37 +10,39 @@ import (
 	"github.com/google/uuid"
 )
 
+type blacklistItem struct {
+	UserID     uuid.UUID
+	Expiration time.Time
+}
+
 // InMemoryTokenRepository is an in-memory implementation of TokenRepository.
-// It's suitable for development, testing, and single-instance deployments.
 type InMemoryTokenRepository struct {
-	blacklist     map[string]time.Time // Stores JTI -> Expiration Time
-	mu            sync.RWMutex         // Protects concurrent access to the map
-	refreshTokens map[string]uuid.UUID // Stores RefreshToken -> UserID
+	blacklist     map[string]blacklistItem
+	mu            sync.RWMutex
+	refreshTokens map[string]uuid.UUID
 }
 
 // NewInMemoryTokenRepository creates a new InMemoryTokenRepository.
 func NewInMemoryTokenRepository() *InMemoryTokenRepository {
 	log.Println("NewInMemoryTokenRepository: Creating new in-memory token repository")
 	return &InMemoryTokenRepository{
-		blacklist:     make(map[string]time.Time),
+		blacklist:     make(map[string]blacklistItem),
 		refreshTokens: make(map[string]uuid.UUID),
 	}
 }
 
-// RevokeToken adds a token's JTI to the blacklist with an expiration time.
-func (r *InMemoryTokenRepository) RevokeToken(ctx context.Context, jti string, expiration time.Duration) error {
-	log.Printf("RevokeToken: Revoking token with JTI %s", jti)
+// RevokeToken adds a token's JTI to the blacklist with an expiration time and user ID.
+func (r *InMemoryTokenRepository) RevokeToken(ctx context.Context, userID uuid.UUID, jti string, expiration time.Duration) error {
+	log.Printf("RevokeToken: Revoking token with JTI %s for user %s", jti, userID)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Convert duration to expiration time
 	expireAt := time.Now().Add(expiration)
+	r.blacklist[jti] = blacklistItem{
+		UserID:     userID,
+		Expiration: expireAt,
+	}
 
-	r.blacklist[jti] = expireAt
-
-	// go routine to clean up
-	go r.cleanup(jti, expiration)
-	log.Printf("RevokeToken: Token with JTI %s revoked successfully", jti)
 	return nil
 }
 
@@ -51,31 +52,47 @@ func (r *InMemoryTokenRepository) IsTokenRevoked(ctx context.Context, jti string
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	expireAt, ok := r.blacklist[jti]
+	item, ok := r.blacklist[jti]
 	if !ok {
 		log.Printf("IsTokenRevoked: Token with JTI %s is not revoked", jti)
-		return false, nil // Not found, so not revoked
+		return false, nil
 	}
 
-	// Check if the token has expired
-	if time.Now().After(expireAt) {
-		// it is expired, so remove it
+	if time.Now().After(item.Expiration) {
 		log.Printf("IsTokenRevoked: Token with JTI %s is expired, removing from blacklist", jti)
+		r.mu.RUnlock() // Release read lock to acquire write lock
+		r.mu.Lock()
+		delete(r.blacklist, jti)
+		r.mu.Unlock()
+		r.mu.RLock() // Re-acquire read lock
 		return false, nil
 	}
 
 	log.Printf("IsTokenRevoked: Token with JTI %s is revoked", jti)
-	return true, nil // Found, and not expired, so it's revoked
+	return true, nil
 }
 
-// cleanup removes the JTI from the map when it is expired
-func (r *InMemoryTokenRepository) cleanup(jti string, expiration time.Duration) {
-	time.Sleep(expiration)
-
+// RevokeUserTokens removes all tokens for a given user ID from the blacklist.
+func (r *InMemoryTokenRepository) RevokeUserTokens(ctx context.Context, userID uuid.UUID) error {
+	log.Printf("RevokeUserTokens: Revoking all tokens for user %s", userID)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.blacklist, jti)
-	log.Printf("cleanup: Token with JTI %s has expired and been removed from blacklist", jti)
+
+	for jti, item := range r.blacklist {
+		if item.UserID == userID {
+			delete(r.blacklist, jti)
+		}
+	}
+
+	// Also revoke refresh tokens
+	for token, id := range r.refreshTokens {
+		if id == userID {
+			delete(r.refreshTokens, token)
+		}
+	}
+
+	log.Printf("RevokeUserTokens: All tokens for user %s have been revoked", userID)
+	return nil
 }
 
 // CreateRefreshToken stores the refresh token in memory, associated with the user ID.

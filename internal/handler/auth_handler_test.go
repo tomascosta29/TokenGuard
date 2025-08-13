@@ -92,14 +92,53 @@ func (m *MockTokenService) RevokeRefreshToken(ctx context.Context, refreshToken 
 	return args.Error(0)
 }
 
+func (m *MockTokenService) RevokeUserTokens(ctx context.Context, userID uuid.UUID) error {
+	args := m.Called(ctx, userID)
+	return args.Error(0)
+}
+
 // setupTest creates a new AuthHandler with mock services and a discard logger.
 func setupTest(t *testing.T) (*AuthHandler, *MockUserService, *MockTokenService) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockUserService := new(MockUserService)
 	mockTokenService := new(MockTokenService)
-	handler := NewAuthHandler(mockUserService, mockTokenService, logger)
+	handler := NewAuthHandler(mockUserService, mockTokenService, logger, "test-admin-key")
 	return handler, mockUserService, mockTokenService
+}
+
+func TestAuthHandler_AdminAuthMiddleware(t *testing.T) {
+	handler, _, _ := setupTest(t)
+
+	dummyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	middleware := handler.AdminAuthMiddleware(dummyHandler)
+
+	t.Run("Valid API Key", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Authorization", "Bearer test-admin-key")
+		recorder := httptest.NewRecorder()
+		middleware.ServeHTTP(recorder, req)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+	})
+
+	t.Run("Invalid API Key", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Authorization", "Bearer wrong-key")
+		recorder := httptest.NewRecorder()
+		middleware.ServeHTTP(recorder, req)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "Invalid admin API key")
+	})
+
+	t.Run("Missing API Key", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		recorder := httptest.NewRecorder()
+		middleware.ServeHTTP(recorder, req)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "Authorization header required")
+	})
 }
 
 // assertErrorResponse checks for a JSON error response.
@@ -354,6 +393,38 @@ func TestValidatePasswordComplexity(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAuthHandler_AdminRevokeHandler(t *testing.T) {
+	t.Run("Successful revoke", func(t *testing.T) {
+		handler, _, mockTokenService := setupTest(t)
+		userID := uuid.New()
+		reqBody := `{"user_id": "` + userID.String() + `"}`
+		req := httptest.NewRequest("POST", "/v1/admin/auth/revoke", bytes.NewBufferString(reqBody))
+		recorder := httptest.NewRecorder()
+
+		mockTokenService.On("RevokeUserTokens", mock.Anything, userID).Return(nil).Once()
+
+		handler.AdminRevokeHandler(recorder, req)
+
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		var resp map[string]string
+		json.Unmarshal(recorder.Body.Bytes(), &resp)
+		assert.Equal(t, "User tokens revoked successfully", resp["message"])
+		mockTokenService.AssertExpectations(t)
+	})
+
+	t.Run("Invalid user ID", func(t *testing.T) {
+		handler, _, _ := setupTest(t)
+		reqBody := `{"user_id": "invalid-uuid"}`
+		req := httptest.NewRequest("POST", "/v1/admin/auth/revoke", bytes.NewBufferString(reqBody))
+		recorder := httptest.NewRecorder()
+
+		handler.AdminRevokeHandler(recorder, req)
+
+		assert.Equal(t, http.StatusBadRequest, recorder.Code)
+		assertErrorResponse(t, recorder.Body, "Invalid user ID format")
+	})
 }
 
 func TestValidateUsername(t *testing.T) {
