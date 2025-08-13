@@ -27,7 +27,7 @@ func main() {
 	logger.Info("Starting TokenGuard service...")
 
 	// Load configuration
-	cfg, err := config.LoadConfig(".env")
+	cfg, err := config.LoadConfig(".")
 	if err != nil {
 		logger.Error("Failed to load config", "error", err)
 		os.Exit(1)
@@ -71,11 +71,12 @@ func main() {
 	logger.Info("Token service initialized.")
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(userService, tokenService, logger)
+	authHandler := handler.NewAuthHandler(userService, tokenService, logger, cfg.AdminAPIKey)
 	logger.Info("Auth handler initialized.")
 
 	// Create router and register routes
 	r := mux.NewRouter()
+	r.Use(handler.SecurityHeadersMiddleware)
 
 	// Initialize the rate limiter
 	if cfg.RateLimiterEnabled {

@@ -1,4 +1,3 @@
-// File: TokenGuard/./internal/repository/token_repository_redis_test.go
 package repository
 
 import (
@@ -7,31 +6,35 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/stretchr/testify/assert"
 )
 
-// Mock Redis for testing (can also use a real Redis instance if available)
+// MockRedisClient is a mock of the RedisClient interface.
 type MockRedisClient struct {
 	data map[string]string
+	sets map[string][]string
+	exp  map[string]time.Time
+}
+
+func NewMockRedisClient() *MockRedisClient {
+	return &MockRedisClient{
+		data: make(map[string]string),
+		sets: make(map[string][]string),
+		exp:  make(map[string]time.Time),
+	}
 }
 
 func (m *MockRedisClient) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.StatusCmd {
-	if m.data == nil {
-		m.data = make(map[string]string)
-	}
-	m.data[key] = value.(string) // Simple mock, assuming string values
-	// Simulate expiration (simplified)
+	m.data[key] = value.(string)
 	if expiration > 0 {
-		time.AfterFunc(expiration, func() {
-			delete(m.data, key)
-		})
+		m.exp[key] = time.Now().Add(expiration)
 	}
-	return redis.NewStatusResult("", nil) // No error in mock
+	return redis.NewStatusResult("", nil)
 }
 
 func (m *MockRedisClient) Get(ctx context.Context, key string) *redis.StringCmd {
-	if m.data == nil {
-		return redis.NewStringResult("", redis.Nil) // Key not found
+	if exp, ok := m.exp[key]; ok && time.Now().After(exp) {
+		delete(m.data, key)
+		delete(m.exp, key)
 	}
 	val, ok := m.data[key]
 	if !ok {
@@ -40,94 +43,79 @@ func (m *MockRedisClient) Get(ctx context.Context, key string) *redis.StringCmd 
 	return redis.NewStringResult(val, nil)
 }
 
-func (m *MockRedisClient) Ping(ctx context.Context) *redis.StatusCmd {
-	return redis.NewStatusResult("PONG", nil) // No error in mock
-}
-
-// Mock for Del
 func (m *MockRedisClient) Del(ctx context.Context, keys ...string) *redis.IntCmd {
-	if m.data == nil {
-		return redis.NewIntResult(0, nil) // No keys deleted
-	}
-	deleted := 0
+	count := 0
 	for _, key := range keys {
 		if _, ok := m.data[key]; ok {
 			delete(m.data, key)
-			deleted++
+			delete(m.exp, key)
+			count++
+		}
+		if _, ok := m.sets[key]; ok {
+			delete(m.sets, key)
+			count++
 		}
 	}
-	return redis.NewIntResult(int64(deleted), nil) // Return number of deleted keys
+	return redis.NewIntCmd(ctx, int64(count))
 }
 
-func TestRedisTokenRepository_RevokeToken(t *testing.T) {
-	mockClient := &MockRedisClient{}
-	repo := &RedisTokenRepository{client: mockClient} // Use the mock
-	ctx := context.Background()
-
-	jti := "test-jti"
-	expiration := time.Minute
-
-	err := repo.RevokeToken(ctx, jti, expiration)
-	assert.NoError(t, err)
-
-	// Check if the token is revoked (using the mock)
-	isRevoked, err := repo.IsTokenRevoked(ctx, jti)
-	assert.NoError(t, err)
-	assert.True(t, isRevoked)
-
-	// Wait longer than expiration
-	time.Sleep(expiration + time.Millisecond*100) // add margin
-	isRevoked, err = repo.IsTokenRevoked(ctx, jti)
-	assert.NoError(t, err)
-	assert.False(t, isRevoked, "token should be expired")
+func (m *MockRedisClient) Ping(ctx context.Context) *redis.StatusCmd {
+	return redis.NewStatusResult("PONG", nil)
 }
 
-func TestRedisTokenRepository_IsTokenRevoked(t *testing.T) {
-	mockClient := &MockRedisClient{}
-	repo := &RedisTokenRepository{client: mockClient}
-	ctx := context.Background()
-
-	jti := "another-test-jti"
-
-	// Initially, the token should not be revoked
-	isRevoked, err := repo.IsTokenRevoked(ctx, jti)
-	assert.NoError(t, err)
-	assert.False(t, isRevoked)
-
-	// Revoke the token
-	err = repo.RevokeToken(ctx, jti, time.Minute)
-	assert.NoError(t, err)
-
-	// Now it should be revoked
-	isRevoked, err = repo.IsTokenRevoked(ctx, jti)
-	assert.NoError(t, err)
-	assert.True(t, isRevoked)
+func (m *MockRedisClient) Close() error {
+	return nil
 }
 
-//For real integration test
-/*
-func TestRedisTokenRepository_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
+func (m *MockRedisClient) SAdd(ctx context.Context, key string, members ...interface{}) *redis.IntCmd {
+	for _, member := range members {
+		m.sets[key] = append(m.sets[key], member.(string))
 	}
-
-	repo, err := NewRedisTokenRepository("localhost:6379", "") // Use a real Redis
-    require.NoError(t, err)
-	ctx := context.Background()
-
-	jti := "integration-test-jti"
-	expiration := time.Minute
-
-	err = repo.RevokeToken(ctx, jti, expiration)
-	assert.NoError(t, err)
-
-	isRevoked, err := repo.IsTokenRevoked(ctx, jti)
-	assert.NoError(t, err)
-	assert.True(t, isRevoked)
-
-    time.Sleep(expiration + time.Millisecond*100)
-    isRevoked, err = repo.IsTokenRevoked(ctx, jti)
-    assert.NoError(t, err)
-    assert.False(t, isRevoked)
+	return redis.NewIntCmd(ctx, int64(len(members)))
 }
-*/
+
+func (m *MockRedisClient) SMembers(ctx context.Context, key string) *redis.StringSliceCmd {
+	return redis.NewStringSliceResult(m.sets[key], nil)
+}
+
+func (m *MockRedisClient) Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd {
+	m.exp[key] = time.Now().Add(expiration)
+	return redis.NewBoolResult(true, nil)
+}
+
+func (m *MockRedisClient) TxPipeline() redis.Pipeliner {
+	return &MockPipeliner{mock: m}
+}
+
+type MockPipeliner struct {
+	mock *MockRedisClient
+	redis.Pipeliner
+}
+
+func (p *MockPipeliner) Exec(ctx context.Context) ([]redis.Cmder, error) {
+	return nil, nil
+}
+
+func (p *MockPipeliner) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.StatusCmd {
+	return p.mock.Set(ctx, key, value, expiration)
+}
+
+func (p *MockPipeliner) SAdd(ctx context.Context, key string, members ...interface{}) *redis.IntCmd {
+	return p.mock.SAdd(ctx, key, members...)
+}
+
+func (p *MockPipeliner) Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd {
+	return p.mock.Expire(ctx, key, expiration)
+}
+
+func (p *MockPipeliner) Del(ctx context.Context, keys ...string) *redis.IntCmd {
+	return p.mock.Del(ctx, keys...)
+}
+
+func TestRedisTokenRepositoryWithMock(t *testing.T) {
+	mockClient := NewMockRedisClient()
+	repo := &RedisTokenRepository{client: mockClient}
+	cleanup := func() {} // No cleanup needed for mock
+
+	RunTokenRepositoryTests(t, repo, cleanup)
+}

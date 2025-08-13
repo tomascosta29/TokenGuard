@@ -20,9 +20,14 @@ type MockTokenRepository struct {
 }
 
 // RevokeToken is the mock implementation for RevokeToken.
-func (m *MockTokenRepository) RevokeToken(ctx context.Context, jti string, expiration time.Duration) error {
-	args := m.Called(ctx, jti, expiration) // Record the call
-	return args.Error(0)                   // Return configured error (or nil)
+func (m *MockTokenRepository) RevokeToken(ctx context.Context, userID uuid.UUID, jti string, expiration time.Duration) error {
+	args := m.Called(ctx, userID, jti, expiration) // Record the call
+	return args.Error(0)                           // Return configured error (or nil)
+}
+
+func (m *MockTokenRepository) RevokeUserTokens(ctx context.Context, userID uuid.UUID) error {
+	args := m.Called(ctx, userID)
+	return args.Error(0)
 }
 
 // IsTokenRevoked is the mock implementation for IsTokenRevoked.

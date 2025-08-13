@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/mail"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/tomascosta29/TokenGuard/internal/model"
 	"github.com/tomascosta29/TokenGuard/internal/service"
@@ -15,27 +16,75 @@ type AuthHandler struct {
 	userService  service.UserServiceInterface
 	tokenService service.TokenServiceInterface
 	logger       *slog.Logger
+	adminAPIKey  string
 }
 
-func NewAuthHandler(userService service.UserServiceInterface, tokenService service.TokenServiceInterface, logger *slog.Logger) *AuthHandler {
+func NewAuthHandler(userService service.UserServiceInterface, tokenService service.TokenServiceInterface, logger *slog.Logger, adminAPIKey string) *AuthHandler {
 	return &AuthHandler{
 		userService:  userService,
 		tokenService: tokenService,
 		logger:       logger,
+		adminAPIKey:  adminAPIKey,
 	}
 }
 
 func (h *AuthHandler) RegisterRoutes(r *mux.Router) {
-	// Create a subrouter for /v1 routes
 	v1 := r.PathPrefix("/v1").Subrouter()
 
-	// All auth routes will be under /v1
 	authRouter := v1.PathPrefix("/auth").Subrouter()
 	authRouter.HandleFunc("/register", h.RegisterHandler).Methods("POST")
 	authRouter.HandleFunc("/login", h.LoginHandler).Methods("POST")
 	authRouter.HandleFunc("/refresh", h.RefreshHandler).Methods("POST")
 	authRouter.HandleFunc("/logout", h.LogoutHandler).Methods("POST")
 	authRouter.HandleFunc("/validate", h.ValidateTokenHandler).Methods("GET")
+
+	adminRouter := v1.PathPrefix("/admin").Subrouter()
+	adminRouter.Use(h.AdminAuthMiddleware)
+	adminRouter.HandleFunc("/auth/revoke", h.AdminRevokeHandler).Methods("POST")
+}
+
+func (h *AuthHandler) AdminRevokeHandler(w http.ResponseWriter, r *http.Request) {
+	h.logger.Info("AdminRevokeHandler: Incoming request")
+	var req model.AdminRevokeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("AdminRevokeHandler: Invalid request body", "error", err)
+		respondWithError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := uuid.Parse(req.UserID)
+	if err != nil {
+		h.logger.Error("AdminRevokeHandler: Invalid user ID format", "error", err)
+		respondWithError(w, "Invalid user ID format", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.tokenService.RevokeUserTokens(r.Context(), userID); err != nil {
+		h.logger.Error("AdminRevokeHandler: Failed to revoke user tokens", "error", err)
+		respondWithError(w, "Failed to revoke user tokens", http.StatusInternalServerError)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"message": "User tokens revoked successfully"})
+	h.logger.Info("AdminRevokeHandler: User tokens revoked successfully", "user_id", userID)
+}
+
+func (h *AuthHandler) AdminAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey := r.Header.Get("Authorization")
+		if apiKey == "" {
+			respondWithError(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		// In a real app, you'd use a more secure comparison, like crypto/subtle.ConstantTimeCompare
+		if apiKey != "Bearer "+h.adminAPIKey {
+			respondWithError(w, "Invalid admin API key", http.StatusUnauthorized)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,25 +96,21 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Input Validation
 	if req.Username == "" || req.Email == "" || req.Password == "" {
 		respondWithError(w, "All fields are required", http.StatusBadRequest)
 		return
 	}
 
-	// Username validation
 	if err := validateUsername(req.Username); err != nil {
 		respondWithError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Email validation
 	if _, err := mail.ParseAddress(req.Email); err != nil {
 		respondWithError(w, "Invalid email format", http.StatusBadRequest)
 		return
 	}
 
-	// Password validation
 	if err := validatePasswordComplexity(req.Password); err != nil {
 		respondWithError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -74,7 +119,6 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	_, err := h.userService.RegisterUser(r.Context(), &req)
 	if err != nil {
 		h.logger.Error("RegisterHandler: Registration failed", "error", err)
-		// Do not expose internal error message to the client
 		respondWithError(w, "Registration failed", http.StatusBadRequest)
 		return
 	}
