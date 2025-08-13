@@ -26,11 +26,16 @@ func NewAuthHandler(userService service.UserServiceInterface, tokenService servi
 }
 
 func (h *AuthHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/auth/register", h.RegisterHandler).Methods("POST")
-	r.HandleFunc("/auth/login", h.LoginHandler).Methods("POST")
-	r.HandleFunc("/auth/refresh", h.RefreshHandler).Methods("POST")
-	r.HandleFunc("/auth/logout", h.LogoutHandler).Methods("POST")
-	r.HandleFunc("/auth/validate", h.ValidateTokenHandler).Methods("GET")
+	// Create a subrouter for /v1 routes
+	v1 := r.PathPrefix("/v1").Subrouter()
+
+	// All auth routes will be under /v1
+	authRouter := v1.PathPrefix("/auth").Subrouter()
+	authRouter.HandleFunc("/register", h.RegisterHandler).Methods("POST")
+	authRouter.HandleFunc("/login", h.LoginHandler).Methods("POST")
+	authRouter.HandleFunc("/refresh", h.RefreshHandler).Methods("POST")
+	authRouter.HandleFunc("/logout", h.LogoutHandler).Methods("POST")
+	authRouter.HandleFunc("/validate", h.ValidateTokenHandler).Methods("GET")
 }
 
 func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
