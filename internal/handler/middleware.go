@@ -1,42 +1,38 @@
-// File: TokenGuard/./internal/handler/middleware.go
 package handler
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/tomascosta29/TokenGuard/internal/service"
 )
 
-// AuthMiddleware is a middleware function that checks for a valid JWT
-func AuthMiddleware(tokenService *service.TokenService) func(next http.Handler) http.Handler {
+// AuthMiddleware creates a middleware that checks for a valid JWT.
+func AuthMiddleware(tokenService service.TokenServiceInterface, logger *slog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Println("AuthMiddleware: Incoming request")
+			logger.Info("AuthMiddleware: Incoming request")
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				log.Println("AuthMiddleware: Authorization header required")
-				http.Error(w, "Authorization header required", http.StatusUnauthorized)
+				respondWithError(w, "Authorization header required", http.StatusUnauthorized)
 				return
 			}
 
 			tokenString, err := extractBearerToken(authHeader)
 			if err != nil {
-				log.Printf("AuthMiddleware: %v", err)
-				http.Error(w, err.Error(), http.StatusUnauthorized)
+				logger.Warn("AuthMiddleware: Invalid auth header", "error", err)
+				respondWithError(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
 
 			_, err = tokenService.ValidateToken(r.Context(), tokenString)
 			if err != nil {
-				log.Printf("AuthMiddleware: Invalid token: %v", err)
-				http.Error(w, fmt.Sprintf("Invalid token: %v", err), http.StatusUnauthorized)
+				logger.Warn("AuthMiddleware: Invalid token", "error", err)
+				respondWithError(w, "Invalid token", http.StatusUnauthorized)
 				return
 			}
 
-			// Token is valid, proceed to the next handler
-			log.Println("AuthMiddleware: Token is valid")
+			logger.Info("AuthMiddleware: Token is valid")
 			next.ServeHTTP(w, r)
 		})
 	}

@@ -93,7 +93,7 @@
 To run the unit tests, execute the following command from the project root directory:
 
 ```bash
-go test ./... TokenGuard
+go test ./...
 
 **Future Work:** (in no specific order)
 
