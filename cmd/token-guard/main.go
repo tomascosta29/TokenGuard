@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"golang.org/x/time/rate"
 	"github.com/tomascosta29/TokenGuard/internal/app"
 	"github.com/tomascosta29/TokenGuard/internal/config"
 	"github.com/tomascosta29/TokenGuard/internal/handler"
@@ -75,6 +76,14 @@ func main() {
 
 	// Create router and register routes
 	r := mux.NewRouter()
+
+	// Initialize the rate limiter
+	if cfg.RateLimiterEnabled {
+		slog.Info("Rate limiter enabled", "limit", cfg.RateLimit, "burst", cfg.RateBurst)
+		limiter := handler.NewIPRateLimiter(rate.Limit(cfg.RateLimit), cfg.RateBurst)
+		r.Use(handler.RateLimitMiddleware(limiter))
+	}
+
 	authHandler.RegisterRoutes(r)
 
 	// Create a server

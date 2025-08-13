@@ -115,7 +115,7 @@ func TestAuthHandler_RegisterHandler(t *testing.T) {
 	t.Run("Successful registration", func(t *testing.T) {
 		handler, mockUserService, _ := setupTest(t)
 		reqBody := `{"username": "testuser", "email": "test@example.com", "password": "Password123!"}`
-		req := httptest.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBody))
+		req := httptest.NewRequest("POST", "/v1/auth/register", bytes.NewBufferString(reqBody))
 		recorder := httptest.NewRecorder()
 
 		mockUserService.On("RegisterUser", mock.Anything, mock.AnythingOfType("*model.RegisterRequest")).Return(&model.User{}, nil).Once()
@@ -131,7 +131,7 @@ func TestAuthHandler_RegisterHandler(t *testing.T) {
 
 	t.Run("Invalid request body", func(t *testing.T) {
 		handler, _, _ := setupTest(t)
-		req := httptest.NewRequest("POST", "/auth/register", bytes.NewBufferString("invalid json"))
+		req := httptest.NewRequest("POST", "/v1/auth/register", bytes.NewBufferString("invalid json"))
 		recorder := httptest.NewRecorder()
 
 		handler.RegisterHandler(recorder, req)
@@ -143,7 +143,7 @@ func TestAuthHandler_RegisterHandler(t *testing.T) {
 	t.Run("Invalid username format", func(t *testing.T) {
 		handler, _, _ := setupTest(t)
 		reqBody := `{"username": "a", "email": "test@example.com", "password": "Password123!"}`
-		req := httptest.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBody))
+		req := httptest.NewRequest("POST", "/v1/auth/register", bytes.NewBufferString(reqBody))
 		recorder := httptest.NewRecorder()
 
 		handler.RegisterHandler(recorder, req)
@@ -155,7 +155,7 @@ func TestAuthHandler_RegisterHandler(t *testing.T) {
 	t.Run("Registration error", func(t *testing.T) {
 		handler, mockUserService, _ := setupTest(t)
 		reqBody := `{"username": "testuser", "email": "test@example.com", "password": "Password123!"}`
-		req := httptest.NewRequest("POST", "/auth/register", bytes.NewBufferString(reqBody))
+		req := httptest.NewRequest("POST", "/v1/auth/register", bytes.NewBufferString(reqBody))
 		recorder := httptest.NewRecorder()
 
 		mockUserService.On("RegisterUser", mock.Anything, mock.AnythingOfType("*model.RegisterRequest")).Return(nil, errors.New("username already exists")).Once()
@@ -172,7 +172,7 @@ func TestAuthHandler_LoginHandler(t *testing.T) {
 	t.Run("Successful login", func(t *testing.T) {
 		handler, mockUserService, mockTokenService := setupTest(t)
 		reqBody := `{"username": "testuser", "password": "password123"}`
-		req := httptest.NewRequest("POST", "/auth/login", bytes.NewBufferString(reqBody))
+		req := httptest.NewRequest("POST", "/v1/auth/login", bytes.NewBufferString(reqBody))
 		recorder := httptest.NewRecorder()
 		userID := uuid.New()
 
@@ -194,7 +194,7 @@ func TestAuthHandler_LoginHandler(t *testing.T) {
 	t.Run("Invalid login credentials", func(t *testing.T) {
 		handler, mockUserService, _ := setupTest(t)
 		reqBody := `{"username": "testuser", "password": "wrongpassword"}`
-		req := httptest.NewRequest("POST", "/auth/login", bytes.NewBufferString(reqBody))
+		req := httptest.NewRequest("POST", "/v1/auth/login", bytes.NewBufferString(reqBody))
 		recorder := httptest.NewRecorder()
 
 		mockUserService.On("LoginUser", mock.Anything, mock.AnythingOfType("*model.LoginRequest")).Return(nil, errors.New("invalid credentials")).Once()
@@ -211,7 +211,7 @@ func TestAuthHandler_ValidateTokenHandler(t *testing.T) {
 	t.Run("Successful validation", func(t *testing.T) {
 		handler, _, mockTokenService := setupTest(t)
 		tokenString := "valid-token"
-		req := httptest.NewRequest("GET", "/auth/validate", nil)
+		req := httptest.NewRequest("GET", "/v1/auth/validate", nil)
 		req.Header.Set("Authorization", "Bearer "+tokenString)
 		recorder := httptest.NewRecorder()
 
@@ -228,7 +228,7 @@ func TestAuthHandler_ValidateTokenHandler(t *testing.T) {
 
 	t.Run("Missing header", func(t *testing.T) {
 		handler, _, _ := setupTest(t)
-		req := httptest.NewRequest("GET", "/auth/validate", nil)
+		req := httptest.NewRequest("GET", "/v1/auth/validate", nil)
 		recorder := httptest.NewRecorder()
 
 		handler.ValidateTokenHandler(recorder, req)
@@ -239,7 +239,7 @@ func TestAuthHandler_ValidateTokenHandler(t *testing.T) {
 
 	t.Run("Invalid token", func(t *testing.T) {
 		handler, _, mockTokenService := setupTest(t)
-		req := httptest.NewRequest("GET", "/auth/validate", nil)
+		req := httptest.NewRequest("GET", "/v1/auth/validate", nil)
 		req.Header.Set("Authorization", "Bearer invalid-token")
 		recorder := httptest.NewRecorder()
 
@@ -257,7 +257,7 @@ func TestAuthHandler_LogoutHandler(t *testing.T) {
 	t.Run("Successful logout", func(t *testing.T) {
 		handler, _, mockTokenService := setupTest(t)
 		tokenString := "valid-token"
-		req := httptest.NewRequest("POST", "/auth/logout", nil)
+		req := httptest.NewRequest("POST", "/v1/auth/logout", nil)
 		req.Header.Set("Authorization", "Bearer "+tokenString)
 		recorder := httptest.NewRecorder()
 
@@ -275,7 +275,7 @@ func TestAuthHandler_LogoutHandler(t *testing.T) {
 	t.Run("Revoke token error", func(t *testing.T) {
 		handler, _, mockTokenService := setupTest(t)
 		tokenString := "valid-token"
-		req := httptest.NewRequest("POST", "/auth/logout", nil)
+		req := httptest.NewRequest("POST", "/v1/auth/logout", nil)
 		req.Header.Set("Authorization", "Bearer "+tokenString)
 		recorder := httptest.NewRecorder()
 
@@ -295,7 +295,7 @@ func TestAuthHandler_RefreshHandler(t *testing.T) {
 		refreshToken := "valid-refresh-token"
 		userID := uuid.New()
 		reqBody := `{"refresh_token": "` + refreshToken + `"}`
-		req := httptest.NewRequest("POST", "/auth/refresh", bytes.NewBufferString(reqBody))
+		req := httptest.NewRequest("POST", "/v1/auth/refresh", bytes.NewBufferString(reqBody))
 		recorder := httptest.NewRecorder()
 
 		mockTokenService.On("ValidateRefreshToken", mock.Anything, refreshToken).Return(userID, nil).Once()
@@ -316,7 +316,7 @@ func TestAuthHandler_RefreshHandler(t *testing.T) {
 	t.Run("Invalid refresh token", func(t *testing.T) {
 		handler, _, mockTokenService := setupTest(t)
 		reqBody := `{"refresh_token": "invalid-token"}`
-		req := httptest.NewRequest("POST", "/auth/refresh", bytes.NewBufferString(reqBody))
+		req := httptest.NewRequest("POST", "/v1/auth/refresh", bytes.NewBufferString(reqBody))
 		recorder := httptest.NewRecorder()
 
 		mockTokenService.On("ValidateRefreshToken", mock.Anything, "invalid-token").Return(uuid.Nil, errors.New("invalid token")).Once()
